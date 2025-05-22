@@ -3,7 +3,11 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/terem42/robohash)](https://goreportcard.com/report/github.com/terem42/robohash)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A Golang implementation of Robohash, the awesome library for generating unique robot/avatar images from any text hash. This is a port of the original [Robohash](https://github.com/e1ven/Robohash) project with performance improvements and additional features. Available as a module or standalone HTTP server
+A Golang implementation of Robohash, the awesome library for generating unique robot/avatar images from any text hash. This is a port of the original [Robohash](https://github.com/e1ven/Robohash) project with performance improvements and additional features. 
+
+Alllows image returned being encoded either PNG, or AVIF. PNG format is used by default, AVIF when .avif extension is supplied
+
+Available as a module or standalone HTTP server.
 
 **Note**: This project uses the original image assets from Robohash under their [original license](https://github.com/e1ven/Robohash/blob/master/LICENSE).
 
@@ -34,6 +38,7 @@ docker run -p 8080:8080 ghcr.io/terem42/robohash
 
 ```
 http://yourserver.com/{TEXT}.png?{PARAMETERS}
+http://yourserver.com/{TEXT}.avif?{PARAMETERS}
 ```
 
 ### Examples
@@ -57,6 +62,11 @@ http://yourserver.com/{TEXT}.png?{PARAMETERS}
    ```
    https://robohash.yourserver.com/dave@email.com.png?set=set5
    ```
+
+4. **Human avatar encoded as AVIF**:
+   ```
+   https://robohash.yourserver.com/dave@email.com.avif?set=set5
+   ```   
 
 ### Available Parameters
 
@@ -117,11 +127,7 @@ func main() {
 		panic(err)
 	}
 	
-	// Save to file
-	err = rh.SaveToFile("alice.png")
-	if err != nil {
-		panic(err)
-	}
+   // rest of the code
 }
 ```
 
@@ -152,7 +158,7 @@ func main() {
        spec:
          containers:
          - name: robohash
-           image: yourusername/robohash
+           image: ghcr.io/terem42/robohash
            ports:
            - containerPort: 8080
    ```

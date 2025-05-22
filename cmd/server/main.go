@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Kagami/go-avif"
 	"github.com/terem42/robohash/robohash"
 )
 
@@ -16,6 +17,7 @@ var buildVersion = "HEAD"
 func hashHandler(w http.ResponseWriter, r *http.Request) {
 	// Извлекаем текст из URL (формат /text.png)
 	path := strings.TrimPrefix(r.URL.Path, "/")
+	ext := filepath.Ext(path)
 	text := strings.TrimSuffix(path, filepath.Ext(path))
 
 	if text == "" {
@@ -38,12 +40,24 @@ func hashHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Отправляем изображение
-	w.Header().Set("Content-Type", "image/png")
-	if err := png.Encode(w, img); err != nil {
-		http.Error(w, fmt.Sprintf("Error encoding image: %v", err), http.StatusInternalServerError)
-		return
+	// Определяем формат по расширению файла
+	switch strings.ToLower(ext) {
+	case ".avif":
+		// Кодируем в AVIF
+		w.Header().Set("Content-Type", "image/avif")
+		if err := avif.Encode(w, img, nil); err != nil {
+			http.Error(w, fmt.Sprintf("Error encoding AVIF image: %v", err), http.StatusInternalServerError)
+			return
+		}
+	default:
+		// По умолчанию кодируем в PNG
+		w.Header().Set("Content-Type", "image/png")
+		if err := png.Encode(w, img); err != nil {
+			http.Error(w, fmt.Sprintf("Error encoding PNG image: %v", err), http.StatusInternalServerError)
+			return
+		}
 	}
+
 }
 
 func main() {
