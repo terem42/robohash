@@ -64,9 +64,9 @@ jobs:
                 repo: context.repo.repo,
                 pull_number: prNumber
               });
-              prMarkdown += `- [#${pr.data.number}](${pr.data.html_url}) ${pr.data.title}\ `;
-              prMarkdown += `  - Author: @${pr.data.user.login}\ `;
-              prMarkdown += `  - Merged: ${new Date(pr.data.merged_at).toLocaleDateString()}\ `;
+              prMarkdown += `- [#${pr.data.number}](${pr.data.html_url}) ${pr.data.title}<br>`;
+              prMarkdown += `  - Author: @${pr.data.user.login}<br>`;
+              prMarkdown += `  - Merged: ${new Date(pr.data.merged_at).toLocaleDateString()}<br>`;
             }
             
             return prMarkdown || 'No pull requests found';
