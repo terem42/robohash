@@ -33,49 +33,43 @@ jobs:
         id: get-prs
         uses: actions/github-script@v6
         with:
-          script: |            
+          script: |
+            
             const lastRelease = await github.rest.repos.getLatestRelease({
               owner: context.repo.owner,
               repo: context.repo.repo
             }).catch(() => null);            
             
-            const commits = await github.rest.repos.compareCommits({
+            const comparison = await github.rest.repos.compareCommits({
               owner: context.repo.owner,
               repo: context.repo.repo,
               base: lastRelease ? lastRelease.data.tag_name : 'HEAD~1',
               head: context.ref
             });            
             
-            const prNumbers = new Set();
-            for (const commit of commits.data.commits) {
+            const prSet = new Set();
+            for (const commit of comparison.data.commits) {
               const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 commit_sha: commit.sha
               });
-              prs.data.forEach(pr => prNumbers.add(pr.number));
+              prs.data.forEach(pr => prSet.add(pr.number));
             }            
             
-            const prDetails = [];
-            for (const number of prNumbers) {
+            let prMarkdown = '';
+            for (const prNumber of prSet) {
               const pr = await github.rest.pulls.get({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                pull_number: number
+                pull_number: prNumber
               });
-              prDetails.push({
-                number: pr.data.number,
-                title: pr.data.title,
-                url: pr.data.html_url,
-                author: pr.data.user.login
-              });
-            }            
+              prMarkdown += `- [#${pr.data.number}](${pr.data.html_url}) ${pr.data.title}\n`;
+              prMarkdown += `  - Author: @${pr.data.user.login}\n`;
+              prMarkdown += `  - Merged: ${new Date(pr.data.merged_at).toLocaleDateString()}\n\n`;
+            }
             
-            const prList = prDetails.map(pr => 
-              `- [#${pr.number}](${pr.url}) ${pr.title} (by @${pr.author})`
-            ).join('\n');
-            
-            return prList;
+            return prMarkdown || 'No pull requests found';
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -104,15 +98,18 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ env.VERSION }}
           body: |
-            ### Docker Image
+            ### 🐳 Docker Image
+            
             ```bash
             docker pull ghcr.io/terem42/robohash:${{ env.VERSION }}
             ```
             
-            ### Included Pull Requests
+            ### 📦 Included Changes
+            
             ${{ steps.get-prs.outputs.result || 'No pull requests found' }}
             
-            ### Full Changelog
+            ### 🔗 Full Changelog
+            
             [Compare with previous release](https://github.com/terem42/robohash/compare/${{ steps.get-prs.outputs.last_tag || 'initial' }}...${{ github.ref_name }})
           draft: false
           prerelease: false
