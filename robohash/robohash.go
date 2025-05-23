@@ -16,6 +16,8 @@ import (
 	draw2 "golang.org/x/image/draw"
 )
 
+var assetsDir = "assets"
+
 type RoboHash struct {
 	Text  string
 	Set   string
@@ -49,7 +51,7 @@ func (r *RoboHash) Generate() (image.Image, error) {
 
 	switch r.Set {
 	case "set1":
-		colorParts, err := filepath.Glob(filepath.Join("assets", r.Set, "*"))
+		colorParts, err := filepath.Glob(filepath.Join(assetsDir, r.Set, "*"))
 		if err != nil || len(colorParts) == 0 {
 			return nil, err
 		}
@@ -117,7 +119,7 @@ func hexToInt(hexStr string) int {
 }
 
 func selectPart(hashPart string, partPath string) string {
-	pattern := filepath.Join("assets", partPath, "*.png")
+	pattern := filepath.Join(assetsDir, partPath, "*.png")
 	files, err := filepath.Glob(pattern)
 	if err != nil || len(files) == 0 {
 		log.Printf("No files found for pattern: %s", pattern)
@@ -150,7 +152,7 @@ func composeImage(parts map[string]string, size string, bgSet string, set string
 
 	// Выбираем и загружаем фон если указан bgSet
 	if bgSet != "" {
-		bgPattern := filepath.Join("assets", "backgrounds", bgSet, "*.png")
+		bgPattern := filepath.Join(assetsDir, "backgrounds", bgSet, "*.png")
 		bgFiles, err := filepath.Glob(bgPattern)
 		if err != nil {
 			return nil, fmt.Errorf("error finding background files: %v", err)

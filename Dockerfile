@@ -31,6 +31,13 @@ COPY assets ./assets/
 
 EXPOSE 8080
 
-LABEL org.opencontainers.image.source=https://github.com/terem42/robohash
+LABEL org.opencontainers.image.title="Robohash" \
+      org.opencontainers.image.description="Robohash generator Golang implementation" \
+      org.opencontainers.image.version="1.0.1" \
+      org.opencontainers.image.authors="terem42" \
+      org.opencontainers.image.url="https://github.com/terem42/robohash" \
+      org.opencontainers.image.source="https://github.com/terem42/robohash" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="terem42"
 
 ENTRYPOINT ["/app/robohash"]
