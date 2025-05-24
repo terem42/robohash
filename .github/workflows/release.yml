@@ -22,68 +22,58 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract version
-        id: version
+      - name: Setup environment
+        id: setup
         run: |
+          # Извлекаем версию из тега
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          
+          # Получаем предыдущий тег
+          PREV_TAG=$(git describe --tags --abbrev=0 ${{ github.ref_name }}^ 2>/dev/null || echo "initial")
+          echo "prev_tag=${PREV_TAG}" >> $GITHUB_OUTPUT
 
-      - name: Get merged PRs
-        id: get-prs
+      - name: Generate changelog
+        id: changelog
         uses: actions/github-script@v6
         env:
-          PR_LIST: ""        
+          CHANGELOG_CONTENT: ""
         with:
           script: |
-            const lastRelease = await github.rest.repos.getLatestRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo
-            }).catch(() => null);            
-            
-            const comparison = await github.rest.repos.compareCommits({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              base: lastRelease ? lastRelease.data.tag_name : 'HEAD~1',
-              head: context.ref
-            });            
-            
-            const prSet = new Set();
-            for (const commit of comparison.data.commits) {
-              const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+            try {
+              // Получаем список PR между тегами
+              const comparison = await github.rest.repos.compareCommits({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                commit_sha: commit.sha
+                base: '${{ steps.setup.outputs.prev_tag }}',
+                head: context.ref
               });
-              prs.data.forEach(pr => prSet.add(pr.number));
-            }            
-            
-            const prDetails = [];
-            for (const prNumber of prSet) {
-              const pr = await github.rest.pulls.get({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: prNumber
-              });
-              prDetails.push({
-                number: pr.data.number,
-                title: pr.data.title,
-                url: pr.data.html_url,
-                author: pr.data.user.login,
-                merged_at: new Date(pr.data.merged_at).toLocaleDateString()
-              });
-            }            
-            
-            prDetails.sort((a, b) => b.number - a.number);
-            const prMarkdown = prDetails.map(pr => 
-              `- [#${pr.number}](${pr.url}) ${pr.title}  \n` +
-              `  _Merged ${pr.merged_at} by @${pr.author}_`
-            ).join('\n\n');            
-            
-            core.exportVariable('PR_LIST', prMarkdown || 'No pull requests found');
-            core.setOutput('last_tag', lastRelease?.data.tag_name || 'initial');
 
-      - name: Setup Docker
+              // Собираем уникальные PR
+              const prMap = new Map();
+              for (const commit of comparison.data.commits) {
+                const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  commit_sha: commit.sha
+                });
+                prs.data.forEach(pr => prMap.set(pr.number, pr));
+              }
+
+              // Форматируем в Markdown
+              const prMarkdown = Array.from(prMap.values())
+                .sort((a, b) => b.number - a.number)
+                .map(pr => `- [#${pr.number}](${pr.html_url}) ${pr.title}\n  _by @${pr.user.login}_`)
+                .join('\n\n');
+
+              core.exportVariable('CHANGELOG_CONTENT', prMarkdown || 'No changes found');
+            } catch (error) {
+              core.exportVariable('CHANGELOG_CONTENT', 'Error generating changelog');
+              core.error(error);
+            }
+
+      - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GHCR
@@ -93,7 +83,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.CR_PAT }}
 
-      - name: Build and push
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -103,28 +93,30 @@ jobs:
             ghcr.io/terem42/robohash:latest
           build-args: |
             BUILD_VERSION=${{ env.VERSION }}
+          labels: |
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
 
-      - name: Create release
+      - name: Create GitHub release
         uses: softprops/action-gh-release@v1
         env:
-          PR_CONTENT: ${{ env.PR_LIST }}         
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ env.VERSION }}
-          body: |
-            ## 🐳 Docker Image
-            
+          RELEASE_BODY: |
+            ## 🚀 Release ${{ env.VERSION }}
+
+            ### 📦 Docker Image
             ```bash
             docker pull ghcr.io/terem42/robohash:${{ env.VERSION }}
             ```
-            
-            ## 📦 Included Changes
-            
-            ${{ env.PR_CONTENT }}
-            
-            ## 🔗 Full Changelog
-            
-            [Compare changes](https://github.com/terem42/robohash/compare/${{ steps.get-prs.outputs.last_tag }}...${{ github.ref_name }})
+
+            ### 📋 Changelog
+            ${{ env.CHANGELOG_CONTENT }}
+
+            ### 🔍 Full Changes
+            [Compare with previous version](https://github.com/terem42/robohash/compare/${{ steps.setup.outputs.prev_tag }}...${{ github.ref_name }})
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ env.VERSION }}
+          body: ${{ env.RELEASE_BODY }}
           draft: false
           prerelease: false
           token: ${{ secrets.CR_PAT }}
