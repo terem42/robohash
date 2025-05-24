@@ -31,8 +31,8 @@ func NewRoboHash(text string, set string) *RoboHash {
 	return &RoboHash{
 		Text:  text,
 		Set:   set,
-		Size:  "300x300", // размер по умолчанию
-		BGSet: "",        // фон по умолчанию прозрачный
+		Size:  "300x300",
+		BGSet: "",
 	}
 }
 
@@ -42,13 +42,11 @@ func (r *RoboHash) Generate() (image.Image, error) {
 		r.Set = "set1"
 	}
 
-	// 1. Используем SHA512 вместо SHA256
 	sha512 := sha512.New()
 	sha512.Write([]byte(r.Text))
 	hashBytes := sha512.Sum(nil)
 	hashString := hex.EncodeToString(hashBytes)
 
-	// 2. Разбиваем хеш на 11 частей (как в Python)
 	hashParts := splitHashIntoParts(hashString, 11)
 
 	if r.Set == "any" {
@@ -76,7 +74,6 @@ func (r *RoboHash) Generate() (image.Image, error) {
 
 	switch r.Set {
 	case "set1":
-		// 3. Выбор цвета (используем hashParts[0])
 		entries, err := assetsFS.ReadDir(filepath.Join("assets", r.Set))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read set1 directory: %v", err)
@@ -140,7 +137,6 @@ func (r *RoboHash) Generate() (image.Image, error) {
 
 	bgSetHash := hashParts[3]
 	if r.BGSet == "any" {
-		// Если bgset="any", выбираем случайный набор фонов (как в Python)
 		bgSets, err := assetsFS.ReadDir(filepath.Join("assets", "backgrounds"))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read backgrounds directory: %v", err)
@@ -153,17 +149,14 @@ func (r *RoboHash) Generate() (image.Image, error) {
 }
 
 func selectPart(hashPart string, partPath string) string {
-	// Формируем полный путь к директории с изображениями
 	dirPath := filepath.Join("assets", partPath)
 
-	// Читаем содержимое директории
 	entries, err := assetsFS.ReadDir(dirPath)
 	if err != nil {
 		log.Printf("Error reading directory %s: %v", dirPath, err)
 		return ""
 	}
 
-	// Собираем только PNG файлы
 	var matches []string
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".png") {
@@ -172,7 +165,6 @@ func selectPart(hashPart string, partPath string) string {
 		}
 	}
 
-	// Добавляем естественную сортировку
 	natsort.Sort(matches)
 
 	if len(matches) == 0 {
@@ -180,7 +172,6 @@ func selectPart(hashPart string, partPath string) string {
 		return ""
 	}
 
-	// Выбираем файл на основе хеша
 	index := hexToInt(hashPart) % len(matches)
 	return matches[index]
 }
@@ -204,16 +195,13 @@ func composeImage(parts map[string]string, size string, bgSet string, set string
 	width, height := getSetDimensions(set)
 	base := image.NewRGBA(image.Rect(0, 0, width, height))
 
-	// Обработка фона
 	if bgSet != "" {
 		bgDirPath := filepath.Join("assets", "backgrounds", bgSet)
 
-		// Читаем содержимое директории с фонами
 		entries, err := assetsFS.ReadDir(bgDirPath)
 		if err != nil {
 			log.Printf("Error reading background directory %s: %v", bgDirPath, err)
 		} else {
-			// Собираем все PNG файлы в директории
 			var bgFiles []string
 			for _, entry := range entries {
 				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".png") {
@@ -224,7 +212,6 @@ func composeImage(parts map[string]string, size string, bgSet string, set string
 			if len(bgFiles) > 0 {
 				bgIndex := hexToInt(bgSetHashPart) % len(bgFiles)
 
-				// Загружаем и масштабируем выбранный фон
 				bgImg, err := loadAndResizeImage(bgFiles[bgIndex], width, height)
 				if err != nil {
 					return nil, fmt.Errorf("error loading background: %v", err)
@@ -234,10 +221,8 @@ func composeImage(parts map[string]string, size string, bgSet string, set string
 		}
 	}
 
-	// Получаем порядок отрисовки
 	order := getPartsOrder(set)
 
-	// Отрисовываем все части
 	for _, partType := range order {
 		if partPath, ok := parts[partType]; ok && partPath != "" {
 			partImg, err := loadAndResizeImage(partPath, width, height)
@@ -249,7 +234,6 @@ func composeImage(parts map[string]string, size string, bgSet string, set string
 		}
 	}
 
-	// Масштабируем если нужно
 	if size != "" {
 		return resizeImage(base, size)
 	}
@@ -265,12 +249,10 @@ func splitHashIntoParts(hash string, count int) []string {
 		end := (i + 1) * partLength
 		parts[i] = hash[start:end]
 	}
-	// Добавляем дублирование как в Python
 	parts = append(parts, parts...)
 	return parts
 }
 
-// Конвертирует HEX-строку в число
 func hexToInt(hexStr string) int {
 	num, err := strconv.ParseInt(hexStr, 16, 64)
 	if err != nil {
@@ -279,11 +261,9 @@ func hexToInt(hexStr string) int {
 	return int(num)
 }
 
-// getPartsOrder возвращает порядок отрисовки частей для каждого набора
 func getPartsOrder(set string) []string {
 	switch set {
 	case "set1":
-		// Порядок для классических роботов (цветные наборы)
 		return []string{
 			"body",      // 003#01Body
 			"face",      // 004#02Face
@@ -293,7 +273,6 @@ func getPartsOrder(set string) []string {
 		}
 
 	case "set2":
-		// Порядок для монстров
 		return []string{
 			"facecolors", // 004#01FaceColors
 			"bodycolors", // 003#02BodyColors
@@ -305,19 +284,17 @@ func getPartsOrder(set string) []string {
 		}
 
 	case "set3":
-		// Порядок для голов роботов (самый сложный набор)
 		return []string{
-			"base",     // 005#01BaseFace - основной слой лица
-			"wave",     // 001#02Wave - волны/фон (если есть)
-			"antenna",  // 006#03Antenna - антенна
-			"eyes",     // 003#04Eyes - глаза
-			"eyebrows", // 002#05Eyebrows - брови
-			"nose",     // 004#06Nose - нос
-			"mouth",    // 000#07Mouth - рот
+			"base",     // 005#01BaseFace
+			"wave",     // 001#02Wave
+			"antenna",  // 006#03Antenna
+			"eyes",     // 003#04Eyes
+			"eyebrows", // 002#05Eyebrows
+			"nose",     // 004#06Nose
+			"mouth",    // 000#07Mouth
 		}
 
 	case "set4":
-		// Порядок для котов
 		return []string{
 			"body",      // 000#00body
 			"fur",       // 001#01fur
@@ -327,7 +304,6 @@ func getPartsOrder(set string) []string {
 		}
 
 	case "set5":
-		// Порядок для человеческих аватаров
 		return []string{
 			"body",        // 000#Body
 			"eyes",        // 001#Eye

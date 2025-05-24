@@ -83,7 +83,6 @@ func TestRoboHashGeneration(t *testing.T) {
 				t.Fatal("Generate() returned nil image")
 			}
 
-			// Test PNG encoding
 			pngBuf := new(bytes.Buffer)
 			if err := png.Encode(pngBuf, img); err != nil {
 				t.Fatalf("PNG encode failed: %v", err)
@@ -93,7 +92,6 @@ func TestRoboHashGeneration(t *testing.T) {
 				t.Errorf("PNG hash mismatch: got %s, want %s", pngHash, tt.png_expected)
 			}
 
-			// Test AVIF encoding
 			avifBuf := new(bytes.Buffer)
 			if err := avif.Encode(avifBuf, img, nil); err != nil {
 				t.Fatalf("AVIF encode failed: %v", err)
