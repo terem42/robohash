@@ -263,9 +263,6 @@ func splitHashIntoParts(hash string, count int) []string {
 	for i := 0; i < count; i++ {
 		start := i * partLength
 		end := (i + 1) * partLength
-		if i == count-1 {
-			end = len(hash)
-		}
 		parts[i] = hash[start:end]
 	}
 	// Добавляем дублирование как в Python
