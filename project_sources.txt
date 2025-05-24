@@ -1,3 +1,78 @@
+FROM docker.io/golang:1.24.3-alpine AS builder
+
+RUN apk add --no-cache build-base xz git aom-dev && \
+    wget -O /tmp/upx.tar.xz https://github.com/upx/upx/releases/download/v5.0.0/upx-5.0.0-amd64_linux.tar.xz && \
+    tar -xJf /tmp/upx.tar.xz -C /tmp && \
+    mv /tmp/upx-5.0.0-amd64_linux/upx /bin/upx && \
+    chmod a+x /bin/upx && \
+    rm -rf /tmp/*
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+ARG BUILD_VERSION
+
+RUN CGO_ENABLED=1 GOOS=linux \
+    go build -a -ldflags="-X main.buildVersion=$BUILD_VERSION -linkmode external -extldflags '-static' -s -w" \
+    -o /app/robohash ./cmd/server
+
+RUN upx --best --lzma /app/robohash
+
+FROM scratch
+
+WORKDIR /app
+
+COPY --from=builder /app/robohash .
+
+EXPOSE 8080
+
+LABEL org.opencontainers.image.title="Robohash" \
+      org.opencontainers.image.description="Robohash generator Golang implementation" \
+      org.opencontainers.image.authors="terem42" \
+      org.opencontainers.image.url="https://github.com/terem42/robohash" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="terem42"
+
+ENTRYPOINT ["/app/robohash"]---------------------
+github.com/Kagami/go-avif v0.1.0 h1:8GHAGLxCdFfhpd4Zg8j1EqO7rtcQNenxIDerC/uu68w=
+github.com/Kagami/go-avif v0.1.0/go.mod h1:OPmPqzNdQq3+sXm0HqaUJQ9W/4k+Elbc3RSfJUemDKA=
+golang.org/x/image v0.27.0 h1:C8gA4oWU/tKkdCfYT6T2u4faJu3MeNS5O8UPWlPF61w=
+golang.org/x/image v0.27.0/go.mod h1:xbdrClrAUway1MUTEZDq9mz/UpRwYAkFFNUslZtcB+g=
+---------------------
+#!/bin/bash
+
+if ! command -v podman &> /dev/null; then
+    echo "❌ Podman is not installed."
+    echo "Please install it with command:"
+    echo "  sudo apt-get update && sudo apt-get install podman"
+    exit 1
+else
+    echo "✅ Podman installed: $(podman --version)"
+fi
+
+workdir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+set -x
+
+cd "$workdir" || exit 1
+
+build_version=$(git describe --tags --always 2>/dev/null || echo "v0.0.1")
+
+rm -rf app-bin/*
+
+podman build --build-arg BUILD_VERSION="$build_version" \
+  -t "ghcr.io/terem42/robohash:$build_version" .
+---------------------
+#!/bin/bash
+find . -type f \( -name "*.go" -o -name "go.*" -o -name "Dockerfile" -o -name "*.sh" \) -print0 | xargs -0 -I{} sh -c 'cat "{}"; echo "---------------------"' > project_sources.txt
+echo "--------------------------" >> ./project_sources.txt
+tree -d ./assets >> ./project_sources.txt
+
+---------------------
 package robohash
 
 import (
@@ -11,8 +86,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/facette/natsort"
 
 	draw2 "golang.org/x/image/draw"
 )
@@ -93,29 +166,31 @@ func (r *RoboHash) Generate() (image.Image, error) {
 		colorPath := colorDirs[colorIndex]
 		color := filepath.Base(colorPath)
 
-		parts["mouth"] = selectPart(hashParts[4], filepath.Join(r.Set, color, "000#Mouth"))
-		parts["eyes"] = selectPart(hashParts[5], filepath.Join(r.Set, color, "001#Eyes"))
-		parts["accessory"] = selectPart(hashParts[6], filepath.Join(r.Set, color, "002#Accessory"))
-		parts["body"] = selectPart(hashParts[7], filepath.Join(r.Set, color, "003#01Body"))
-		parts["face"] = selectPart(hashParts[8], filepath.Join(r.Set, color, "004#02Face"))
+		// 4. Выбор частей робота (используем hashParts[4...])
+		parts["body"] = selectPart(hashParts[4], filepath.Join(r.Set, color, "003#01Body"))
+		parts["face"] = selectPart(hashParts[5], filepath.Join(r.Set, color, "004#02Face"))
+		parts["eyes"] = selectPart(hashParts[6], filepath.Join(r.Set, color, "001#Eyes"))
+		parts["mouth"] = selectPart(hashParts[7], filepath.Join(r.Set, color, "000#Mouth"))
+		parts["accessory"] = selectPart(hashParts[8], filepath.Join(r.Set, color, "002#Accessory"))
 
 	case "set2":
-		parts["body"] = selectPart(hashParts[4], filepath.Join(r.Set, "000#04Body"))
-		parts["mouth"] = selectPart(hashParts[5], filepath.Join(r.Set, "001#Mouth"))
-		parts["eyes"] = selectPart(hashParts[6], filepath.Join(r.Set, "002#Eyes"))
-		parts["bodycolors"] = selectPart(hashParts[7], filepath.Join(r.Set, "003#02BodyColors"))
-		parts["facecolors"] = selectPart(hashParts[8], filepath.Join(r.Set, "004#01FaceColors"))
-		parts["nose"] = selectPart(hashParts[9], filepath.Join(r.Set, "005#Nose"))
-		parts["face"] = selectPart(hashParts[10], filepath.Join(r.Set, "006#03Faces"))
+		parts["facecolors"] = selectPart(hashParts[4], filepath.Join(r.Set, "004#01FaceColors"))
+		parts["bodycolors"] = selectPart(hashParts[5], filepath.Join(r.Set, "003#02BodyColors"))
+		parts["face"] = selectPart(hashParts[6], filepath.Join(r.Set, "006#03Faces"))
+		parts["body"] = selectPart(hashParts[7], filepath.Join(r.Set, "000#04Body"))
+		parts["mouth"] = selectPart(hashParts[8], filepath.Join(r.Set, "001#Mouth"))
+		parts["eyes"] = selectPart(hashParts[9], filepath.Join(r.Set, "002#Eyes"))
+		parts["nose"] = selectPart(hashParts[10], filepath.Join(r.Set, "005#Nose"))
 
 	case "set3":
-		parts["mouth"] = selectPart(hashParts[4], filepath.Join(r.Set, "000#07Mouth"))
+
+		parts["base"] = selectPart(hashParts[4], filepath.Join(r.Set, "005#01BaseFace"))
 		parts["wave"] = selectPart(hashParts[5], filepath.Join(r.Set, "001#02Wave"))
-		parts["eyebrows"] = selectPart(hashParts[6], filepath.Join(r.Set, "002#05Eyebrows"))
+		parts["antenna"] = selectPart(hashParts[6], filepath.Join(r.Set, "006#03Antenna"))
 		parts["eyes"] = selectPart(hashParts[7], filepath.Join(r.Set, "003#04Eyes"))
-		parts["nose"] = selectPart(hashParts[8], filepath.Join(r.Set, "004#06Nose"))
-		parts["base"] = selectPart(hashParts[9], filepath.Join(r.Set, "005#01BaseFace"))
-		parts["antenna"] = selectPart(hashParts[10], filepath.Join(r.Set, "006#03Antenna"))
+		parts["eyebrows"] = selectPart(hashParts[8], filepath.Join(r.Set, "002#05Eyebrows"))
+		parts["nose"] = selectPart(hashParts[9], filepath.Join(r.Set, "004#06Nose"))
+		parts["mouth"] = selectPart(hashParts[10], filepath.Join(r.Set, "000#07Mouth"))
 
 	case "set4":
 		parts["body"] = selectPart(hashParts[4], filepath.Join(r.Set, "000#00body"))
@@ -132,6 +207,11 @@ func (r *RoboHash) Generate() (image.Image, error) {
 		parts["cloth"] = selectPart(hashParts[8], filepath.Join(r.Set, "004#Cloth"))
 		parts["facialhair"] = selectPart(hashParts[9], filepath.Join(r.Set, "005#FacialHair"))
 		parts["top"] = selectPart(hashParts[10], filepath.Join(r.Set, "006#Top"))
+		// Добавляем accessories (используем дублирование хеша, как в Python)
+		if len(hashParts) < 12 {
+			// Если частей не хватает, дублируем массив (как в Python)
+			hashParts = append(hashParts, hashParts...)
+		}
 		parts["accessories"] = selectPart(hashParts[11], filepath.Join(r.Set, "007#Accessories"))
 
 	default:
@@ -171,9 +251,6 @@ func selectPart(hashPart string, partPath string) string {
 			matches = append(matches, fullPath)
 		}
 	}
-
-	// Добавляем естественную сортировку
-	natsort.Sort(matches)
 
 	if len(matches) == 0 {
 		log.Printf("No PNG files found in directory: %s", dirPath)
@@ -264,12 +341,10 @@ func splitHashIntoParts(hash string, count int) []string {
 		start := i * partLength
 		end := (i + 1) * partLength
 		if i == count-1 {
-			end = len(hash)
+			end = len(hash) // Последняя часть берёт остаток
 		}
 		parts[i] = hash[start:end]
 	}
-	// Добавляем дублирование как в Python
-	parts = append(parts, parts...)
 	return parts
 }
 
@@ -408,3 +483,223 @@ func loadImage(path string) (image.Image, error) {
 
 	return img, nil
 }
+---------------------
+package robohash
+
+import (
+	"bytes"
+	"crypto/md5"
+	"encoding/hex"
+	"image/png"
+	"testing"
+
+	"github.com/Kagami/go-avif"
+)
+
+type testCase struct {
+	name          string
+	text          string
+	set           string
+	size          string
+	bgSet         string
+	png_expected  string
+	avif_expected string
+}
+
+func TestRoboHashGeneration(t *testing.T) {
+	tests := []testCase{
+		{
+			name:          "Default set1 with simple text",
+			text:          "test123",
+			set:           "set1",
+			size:          "300x300",
+			bgSet:         "",
+			png_expected:  "9ac002dbb9998cf224e405f008fd5964",
+			avif_expected: "eb0f46ed143b53f93fe565cee31c7d7a",
+		},
+		{
+			name:          "set2 with different text",
+			text:          "another_test",
+			set:           "set2",
+			size:          "350x350",
+			bgSet:         "",
+			png_expected:  "0ed912cb77b254cc2ef646bbc5329f4b",
+			avif_expected: "99a5c32d91d826abae7bcd98a2411731",
+		},
+		{
+			name:          "set3 with background",
+			text:          "complex_robot",
+			set:           "set3",
+			size:          "500x500",
+			bgSet:         "bg1",
+			png_expected:  "fe4754ae3a9f8e5d42a8ff01b8379f74",
+			avif_expected: "e4fb763d94b049e6c1a4e906c0fe6fa0",
+		},
+		{
+			name:          "set4 with custom size",
+			text:          "cat_avatar",
+			set:           "set4",
+			size:          "200x200",
+			bgSet:         "",
+			png_expected:  "42a8b00b31e43297dfdf36bec71bda69",
+			avif_expected: "759857ef30c46a51d8f77ccd3a202d16",
+		},
+		{
+			name:          "set5 human avatar",
+			text:          "human_user",
+			set:           "set5",
+			size:          "400x400",
+			bgSet:         "bg2",
+			png_expected:  "4bbefc72b93c3b33de16e5179d2dca8c",
+			avif_expected: "38d71b24f639c219941ce1634ecbfe43",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			robo := NewRoboHash(tt.text, tt.set)
+			robo.Size = tt.size
+			robo.BGSet = tt.bgSet
+
+			img, err := robo.Generate()
+			if err != nil {
+				t.Fatalf("Generate() failed: %v", err)
+			}
+			if img == nil {
+				t.Fatal("Generate() returned nil image")
+			}
+
+			// Test PNG encoding
+			pngBuf := new(bytes.Buffer)
+			if err := png.Encode(pngBuf, img); err != nil {
+				t.Fatalf("PNG encode failed: %v", err)
+			}
+			pngHash := md5Hash(pngBuf.Bytes())
+			if pngHash != tt.png_expected {
+				t.Errorf("PNG hash mismatch: got %s, want %s", pngHash, tt.png_expected)
+			}
+
+			// Test AVIF encoding
+			avifBuf := new(bytes.Buffer)
+			if err := avif.Encode(avifBuf, img, nil); err != nil {
+				t.Fatalf("AVIF encode failed: %v", err)
+			}
+			avifHash := md5Hash(avifBuf.Bytes())
+			if avifHash != tt.avif_expected {
+				t.Errorf("AVIF hash mismatch: got %s, want %s", avifHash, tt.avif_expected)
+			}
+		})
+	}
+}
+
+func TestEmptyText(t *testing.T) {
+	robo := NewRoboHash("", "set1")
+	img, err := robo.Generate()
+	if err != nil {
+		t.Fatalf("Generate() with empty text failed: %v", err)
+	}
+	if img == nil {
+		t.Error("Generated image is nil for empty text")
+	}
+}
+
+func TestInvalidSet(t *testing.T) {
+	robo := NewRoboHash("test", "invalid_set")
+	_, err := robo.Generate()
+	if err == nil {
+		t.Error("Expected error for invalid set, got nil")
+	}
+}
+
+func md5Hash(data []byte) string {
+	hasher := md5.New()
+	hasher.Write(data)
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+---------------------
+package main
+
+import (
+	"fmt"
+	"image/png"
+	"log"
+	"net/http"
+	"path/filepath"
+	"strings"
+
+	"github.com/Kagami/go-avif"
+	"github.com/terem42/robohash/robohash"
+)
+
+var buildVersion = "HEAD"
+
+func hashHandler(w http.ResponseWriter, r *http.Request) {
+	// Извлекаем текст из URL (формат /text.png)
+	path := strings.TrimPrefix(r.URL.Path, "/")
+	ext := filepath.Ext(path)
+	text := strings.TrimSuffix(path, filepath.Ext(path))
+
+	if strings.HasPrefix(r.URL.Path, "favicon") {
+		http.NotFound(w, r)
+	}
+
+	if text == "" {
+		text = "example"
+	}
+
+	// Парсим параметры запроса
+	query := r.URL.Query()
+	roboHash := robohash.RoboHash{
+		Text:  text,
+		Set:   query.Get("set"),
+		Size:  query.Get("size"),
+		BGSet: query.Get("bgset"),
+	}
+
+	// Генерируем изображение
+	img, err := roboHash.Generate()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error generating image: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Определяем формат по расширению файла
+	switch strings.ToLower(ext) {
+	case ".avif":
+		// Кодируем в AVIF
+		w.Header().Set("Content-Type", "image/avif")
+		if err := avif.Encode(w, img, nil); err != nil {
+			http.Error(w, fmt.Sprintf("Error encoding AVIF image: %v", err), http.StatusInternalServerError)
+			return
+		}
+	default:
+		// По умолчанию кодируем в PNG
+		w.Header().Set("Content-Type", "image/png")
+		if err := png.Encode(w, img); err != nil {
+			http.Error(w, fmt.Sprintf("Error encoding PNG image: %v", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+}
+
+func main() {
+	log.Printf("Robohash Go version %s", buildVersion)
+	http.HandleFunc("/", hashHandler)
+	fmt.Println("Server running on :8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+---------------------
+module github.com/terem42/robohash
+
+go 1.23.4
+
+require (
+	github.com/Kagami/go-avif v0.1.0
+	golang.org/x/image v0.27.0
+)
+---------------------
+--------------------------
+./assets  [error opening dir]
+
+0 directories
