@@ -32,6 +32,8 @@ jobs:
       - name: Get merged PRs
         id: get-prs
         uses: actions/github-script@v6
+        env:
+          PR_LIST: ""        
         with:
           script: |
             const lastRelease = await github.rest.repos.getLatestRelease({
@@ -76,10 +78,11 @@ jobs:
             const prMarkdown = prDetails.map(pr => 
               `- [#${pr.number}](${pr.url}) ${pr.title}  \n` +
               `  _Merged ${pr.merged_at} by @${pr.author}_`
-            ).join('\n\n');
+            ).join('\n\n');            
             
-            core.setOutput('result', prMarkdown || 'No pull requests found');
-            core.setOutput('last_tag', lastRelease?.data.tag_name || 'initial');
+            core.exportVariable('PR_LIST', prMarkdown || 'No pull requests found');            
+            core.setOutput('pr-list', prMarkdown || '');
+            core.setOutput('last-tag', lastRelease?.data.tag_name || 'initial');
 
       - name: Setup Docker
         uses: docker/setup-buildx-action@v3
@@ -104,6 +107,8 @@ jobs:
 
       - name: Create release
         uses: softprops/action-gh-release@v1
+        env:
+          PR_CONTENT: ${{ env.PR_LIST }}         
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ env.VERSION }}
@@ -116,7 +121,7 @@ jobs:
             
             ## 📦 Included Changes
             
-            ${{ steps.get-prs.outputs.result }}
+            ${{ env.PR_CONTENT }}
             
             ## 🔗 Full Changelog
             
