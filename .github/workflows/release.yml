@@ -80,9 +80,8 @@ jobs:
               `  _Merged ${pr.merged_at} by @${pr.author}_`
             ).join('\n\n');            
             
-            core.exportVariable('PR_LIST', prMarkdown || 'No pull requests found');            
-            core.setOutput('pr-list', prMarkdown || '');
-            core.setOutput('last-tag', lastRelease?.data.tag_name || 'initial');
+            core.exportVariable('PR_LIST', prMarkdown || 'No pull requests found');
+            core.setOutput('last_tag', lastRelease?.data.tag_name || 'initial');
 
       - name: Setup Docker
         uses: docker/setup-buildx-action@v3
