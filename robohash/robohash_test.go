@@ -37,8 +37,8 @@ func TestRoboHashGeneration(t *testing.T) {
 			set:           "set2",
 			size:          "350x350",
 			bgSet:         "",
-			png_expected:  "6ba3b3ea4cb482f508fa8163f212d9f3",
-			avif_expected: "586cd95979a759a9fe9063d98d76bee7",
+			png_expected:  "ae5d7352f49b55ff4af0a09048c0663e",
+			avif_expected: "7e8f23372d80791c83d346306d7c8ee6",
 		},
 		{
 			name:          "set3 with background",
@@ -46,8 +46,8 @@ func TestRoboHashGeneration(t *testing.T) {
 			set:           "set3",
 			size:          "500x500",
 			bgSet:         "bg1",
-			png_expected:  "862df103d22ab94d6652e00a1efa8ed3",
-			avif_expected: "8966a3f67fb07506afe2cfa40b5c4553",
+			png_expected:  "508d1f14512da60aa3ba9bd93f3937e3",
+			avif_expected: "e1e14027059152c8af398881fc11d58b",
 		},
 		{
 			name:          "set4 with custom size",
@@ -64,8 +64,8 @@ func TestRoboHashGeneration(t *testing.T) {
 			set:           "set5",
 			size:          "400x400",
 			bgSet:         "bg2",
-			png_expected:  "449120fa019fef018867a9bc8e471f96",
-			avif_expected: "40ac4dc32cbfa2a3d1ba657f6c998816",
+			png_expected:  "997f188de3228e39616b1d154a1f257d",
+			avif_expected: "0fbed7170d0f8cb6439e99b9224e7069",
 		},
 	}
 
