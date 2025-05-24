@@ -9,7 +9,7 @@ permissions:
   contents: write
   packages: write
   id-token: write
-  pull-requests: read  
+  pull-requests: read
 
 jobs:
   build-and-push:
@@ -29,14 +29,11 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
-      - name: Get merged PRs since last release
+      - name: Get merged PRs
         id: get-prs
         uses: actions/github-script@v6
-        env:
-          RESULT: ""
         with:
           script: |
-            
             const lastRelease = await github.rest.repos.getLatestRelease({
               owner: context.repo.owner,
               repo: context.repo.repo
@@ -75,16 +72,16 @@ jobs:
               });
             }            
             
-            prDetails.sort((a, b) => b.number - a.number);            
-            
+            prDetails.sort((a, b) => b.number - a.number);
             const prMarkdown = prDetails.map(pr => 
               `- [#${pr.number}](${pr.url}) ${pr.title}  \n` +
               `  _Merged ${pr.merged_at} by @${pr.author}_`
             ).join('\n\n');
             
-            core.exportVariable('RESULT', prMarkdown || 'No pull requests found');
+            core.setOutput('result', prMarkdown || 'No pull requests found');
+            core.setOutput('last_tag', lastRelease?.data.tag_name || 'initial');
 
-      - name: Setup Docker Buildx
+      - name: Setup Docker
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GHCR
@@ -94,7 +91,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.CR_PAT }}
 
-      - name: Build and Push
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -105,27 +102,25 @@ jobs:
           build-args: |
             BUILD_VERSION=${{ env.VERSION }}
 
-      - name: Create Release
+      - name: Create release
         uses: softprops/action-gh-release@v1
-        env:
-          PR_LIST: ${{ env.RESULT }}
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ env.VERSION }}
           body: |
-            ### 🐳 Docker Image
+            ## 🐳 Docker Image
             
             ```bash
             docker pull ghcr.io/terem42/robohash:${{ env.VERSION }}
             ```
             
-            ### 📦 Included Changes
+            ## 📦 Included Changes
             
-            ${{ env.PR_LIST }}
+            ${{ steps.get-prs.outputs.result }}
             
-            ### 🔗 Full Changelog
+            ## 🔗 Full Changelog
             
-            [Compare changes](https://github.com/terem42/robohash/compare/${{ steps.get-prs.outputs.last_tag || 'initial' }}...${{ github.ref_name }})
+            [Compare changes](https://github.com/terem42/robohash/compare/${{ steps.get-prs.outputs.last_tag }}...${{ github.ref_name }})
           draft: false
           prerelease: false
           token: ${{ secrets.CR_PAT }}
