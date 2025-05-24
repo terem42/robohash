@@ -99,23 +99,22 @@ jobs:
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2.2.2
-        body: |        
-          ## 🚀 Release ${{ env.VERSION }}
-
-          ### 📦 Docker Image
-          ```bash
-          docker pull ghcr.io/terem42/robohash:${{ env.VERSION }}
-          ```
-
-          ### 📋 Changelog
-          ${{ env.CHANGELOG_CONTENT }}
-
-          ### 🔍 Full Changes
-          [Compare with previous version](https://github.com/terem42/robohash/compare/${{ steps.setup.outputs.prev_tag }}...${{ github.ref_name }})
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ env.VERSION }}
-          body: ${{ env.RELEASE_BODY }}
+          body: |        
+            ## 🚀 Release ${{ env.VERSION }}
+
+            ### 📦 Docker Image
+            ```bash
+            docker pull ghcr.io/terem42/robohash:${{ env.VERSION }}
+            ```
+
+            ### 📋 Changelog
+            ${{ env.CHANGELOG_CONTENT }}
+
+            ### 🔍 Full Changes
+            [Compare with previous version](https://github.com/terem42/robohash/compare/${{ steps.setup.outputs.prev_tag }}...${{ github.ref_name }})          
           draft: false
           prerelease: false
           token: ${{ secrets.CR_PAT }}
