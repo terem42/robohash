@@ -32,6 +32,8 @@ jobs:
       - name: Get merged PRs since last release
         id: get-prs
         uses: actions/github-script@v6
+        env:
+          RESULT: ""
         with:
           script: |
             
@@ -80,7 +82,7 @@ jobs:
               `  _Merged ${pr.merged_at} by @${pr.author}_`
             ).join('\n\n');
             
-            return prMarkdown || 'No pull requests found';
+            core.exportVariable('RESULT', prMarkdown || 'No pull requests found');
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -105,6 +107,8 @@ jobs:
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
+        env:
+          PR_LIST: ${{ env.RESULT }}
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ env.VERSION }}
@@ -117,7 +121,7 @@ jobs:
             
             ### 📦 Included Changes
             
-            ${{ fromJSON('"' + steps.get-prs.outputs.result + '"') || 'No pull requests found' }}
+            ${{ env.PR_LIST }}
             
             ### 🔗 Full Changelog
             
