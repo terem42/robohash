@@ -1,22 +1,24 @@
 package robohash
 
 import (
-	"crypto/sha1"
-	"encoding/binary"
+	"crypto/sha512"
+	"embed"
 	"encoding/hex"
 	"fmt"
 	"image"
 	"image/draw"
 	"log"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/facette/natsort"
+
 	draw2 "golang.org/x/image/draw"
 )
 
-var assetsDir = "assets"
+//go:embed assets
+var assetsFS embed.FS
 
 type RoboHash struct {
 	Text  string
@@ -40,94 +42,147 @@ func (r *RoboHash) Generate() (image.Image, error) {
 		r.Set = "set1"
 	}
 
-	// 1. Создаем SHA1 хеш из входного текста
-	hash := sha1.New()
-	hash.Write([]byte(r.Text))
-	hashBytes := hash.Sum(nil)
+	// 1. Используем SHA512 вместо SHA256
+	sha512 := sha512.New()
+	sha512.Write([]byte(r.Text))
+	hashBytes := sha512.Sum(nil)
 	hashString := hex.EncodeToString(hashBytes)
 
-	// 2. Определяем какие части использовать на основе хеша
+	// 2. Разбиваем хеш на 11 частей (как в Python)
+	hashParts := splitHashIntoParts(hashString, 11)
+
+	if r.Set == "any" {
+		sets, err := assetsFS.ReadDir(filepath.Join("assets"))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read sets directory: %v", err)
+		}
+
+		var availableSets []string
+		for _, entry := range sets {
+			if entry.IsDir() && strings.HasPrefix(entry.Name(), "set") {
+				availableSets = append(availableSets, entry.Name())
+			}
+		}
+
+		if len(availableSets) == 0 {
+			return nil, fmt.Errorf("no valid sets found")
+		}
+
+		setIndex := hexToInt(hashParts[1]) % len(availableSets)
+		r.Set = availableSets[setIndex]
+	}
+
 	parts := make(map[string]string)
 
 	switch r.Set {
 	case "set1":
-		colorParts, err := filepath.Glob(filepath.Join(assetsDir, r.Set, "*"))
-		if err != nil || len(colorParts) == 0 {
-			return nil, err
+		// 3. Выбор цвета (используем hashParts[0])
+		entries, err := assetsFS.ReadDir(filepath.Join("assets", r.Set))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read set1 directory: %v", err)
 		}
-		colorIndex := hexToInt(hashString[0:2]) % len(colorParts)
-		color := filepath.Base(colorParts[colorIndex])
 
-		parts["body"] = selectPart(hashString[2:4], filepath.Join(r.Set, color, "003#01Body"))
-		parts["face"] = selectPart(hashString[4:6], filepath.Join(r.Set, color, "004#02Face"))
-		parts["eyes"] = selectPart(hashString[6:8], filepath.Join(r.Set, color, "001#Eyes"))
-		parts["mouth"] = selectPart(hashString[8:10], filepath.Join(r.Set, color, "000#Mouth"))
-		parts["accessory"] = selectPart(hashString[10:12], filepath.Join(r.Set, color, "002#Accessory"))
+		var colorDirs []string
+		for _, entry := range entries {
+			if entry.IsDir() {
+				colorDirs = append(colorDirs, filepath.Join(r.Set, entry.Name()))
+			}
+		}
+
+		colorIndex := hexToInt(hashParts[0]) % len(colorDirs)
+		colorPath := colorDirs[colorIndex]
+		color := filepath.Base(colorPath)
+
+		parts["mouth"] = selectPart(hashParts[4], filepath.Join(r.Set, color, "000#Mouth"))
+		parts["eyes"] = selectPart(hashParts[5], filepath.Join(r.Set, color, "001#Eyes"))
+		parts["accessory"] = selectPart(hashParts[6], filepath.Join(r.Set, color, "002#Accessory"))
+		parts["body"] = selectPart(hashParts[7], filepath.Join(r.Set, color, "003#01Body"))
+		parts["face"] = selectPart(hashParts[8], filepath.Join(r.Set, color, "004#02Face"))
 
 	case "set2":
-		parts["body"] = selectPart(hashString[0:2], filepath.Join(r.Set, "000#04Body"))
-		parts["mouth"] = selectPart(hashString[2:4], filepath.Join(r.Set, "001#Mouth"))
-		parts["eyes"] = selectPart(hashString[4:6], filepath.Join(r.Set, "002#Eyes"))
-		parts["face"] = selectPart(hashString[6:8], filepath.Join(r.Set, "006#03Faces"))
+		parts["body"] = selectPart(hashParts[4], filepath.Join(r.Set, "000#04Body"))
+		parts["mouth"] = selectPart(hashParts[5], filepath.Join(r.Set, "001#Mouth"))
+		parts["eyes"] = selectPart(hashParts[6], filepath.Join(r.Set, "002#Eyes"))
+		parts["bodycolors"] = selectPart(hashParts[7], filepath.Join(r.Set, "003#02BodyColors"))
+		parts["facecolors"] = selectPart(hashParts[8], filepath.Join(r.Set, "004#01FaceColors"))
+		parts["nose"] = selectPart(hashParts[9], filepath.Join(r.Set, "005#Nose"))
+		parts["face"] = selectPart(hashParts[10], filepath.Join(r.Set, "006#03Faces"))
 
 	case "set3":
-		parts["base"] = selectPart(hashString[0:4], filepath.Join(r.Set, "005#01BaseFace"))
-
-		parts["eyes"] = selectPart(hashString[4:6], filepath.Join(r.Set, "003#04Eyes"))
-
-		if eyebrows := selectPart(hashString[6:8], filepath.Join(r.Set, "002#05Eyebrows")); eyebrows != "" {
-			parts["eyebrows"] = eyebrows
-		}
-
-		if nose := selectPart(hashString[8:10], filepath.Join(r.Set, "004#06Nose")); nose != "" {
-			parts["nose"] = nose
-		}
-
-		parts["mouth"] = selectPart(hashString[10:12], filepath.Join(r.Set, "000#07Mouth"))
-
-		if antenna := selectPart(hashString[12:14], filepath.Join(r.Set, "006#03Antenna")); antenna != "" {
-			parts["antenna"] = antenna
-		}
+		parts["mouth"] = selectPart(hashParts[4], filepath.Join(r.Set, "000#07Mouth"))
+		parts["wave"] = selectPart(hashParts[5], filepath.Join(r.Set, "001#02Wave"))
+		parts["eyebrows"] = selectPart(hashParts[6], filepath.Join(r.Set, "002#05Eyebrows"))
+		parts["eyes"] = selectPart(hashParts[7], filepath.Join(r.Set, "003#04Eyes"))
+		parts["nose"] = selectPart(hashParts[8], filepath.Join(r.Set, "004#06Nose"))
+		parts["base"] = selectPart(hashParts[9], filepath.Join(r.Set, "005#01BaseFace"))
+		parts["antenna"] = selectPart(hashParts[10], filepath.Join(r.Set, "006#03Antenna"))
 
 	case "set4":
-		parts["body"] = selectPart(hashString[0:2], filepath.Join(r.Set, "000#00body"))
-		parts["fur"] = selectPart(hashString[2:4], filepath.Join(r.Set, "001#01fur"))
-		parts["eyes"] = selectPart(hashString[4:6], filepath.Join(r.Set, "002#02eyes"))
-		parts["mouth"] = selectPart(hashString[6:8], filepath.Join(r.Set, "003#03mouth"))
-		parts["accessory"] = selectPart(hashString[8:10], filepath.Join(r.Set, "004#04accessories"))
+		parts["body"] = selectPart(hashParts[4], filepath.Join(r.Set, "000#00body"))
+		parts["fur"] = selectPart(hashParts[5], filepath.Join(r.Set, "001#01fur"))
+		parts["eyes"] = selectPart(hashParts[6], filepath.Join(r.Set, "002#02eyes"))
+		parts["mouth"] = selectPart(hashParts[7], filepath.Join(r.Set, "003#03mouth"))
+		parts["accessory"] = selectPart(hashParts[8], filepath.Join(r.Set, "004#04accessories"))
 
 	case "set5":
-		parts["body"] = selectPart(hashString[0:2], filepath.Join(r.Set, "000#Body"))
-		parts["eyes"] = selectPart(hashString[2:4], filepath.Join(r.Set, "001#Eye"))
-		parts["eyebrow"] = selectPart(hashString[4:6], filepath.Join(r.Set, "002#Eyebrow"))
-		parts["mouth"] = selectPart(hashString[6:8], filepath.Join(r.Set, "003#Mouth"))
-		parts["clothes"] = selectPart(hashString[8:10], filepath.Join(r.Set, "004#Cloth"))
+		parts["body"] = selectPart(hashParts[4], filepath.Join(r.Set, "000#Body"))
+		parts["eyes"] = selectPart(hashParts[5], filepath.Join(r.Set, "001#Eye"))
+		parts["eyebrow"] = selectPart(hashParts[6], filepath.Join(r.Set, "002#Eyebrow"))
+		parts["mouth"] = selectPart(hashParts[7], filepath.Join(r.Set, "003#Mouth"))
+		parts["cloth"] = selectPart(hashParts[8], filepath.Join(r.Set, "004#Cloth"))
+		parts["facialhair"] = selectPart(hashParts[9], filepath.Join(r.Set, "005#FacialHair"))
+		parts["top"] = selectPart(hashParts[10], filepath.Join(r.Set, "006#Top"))
+		parts["accessories"] = selectPart(hashParts[11], filepath.Join(r.Set, "007#Accessories"))
 
 	default:
 		return nil, fmt.Errorf("unknown set: %s", r.Set)
 	}
 
-	return composeImage(parts, r.Size, r.BGSet, r.Set, r.Text)
-}
-
-func hexToInt(hexStr string) int {
-	num, err := strconv.ParseInt(hexStr, 16, 64)
-	if err != nil {
-		return 0
+	bgSetHash := hashParts[3]
+	if r.BGSet == "any" {
+		// Если bgset="any", выбираем случайный набор фонов (как в Python)
+		bgSets, err := assetsFS.ReadDir(filepath.Join("assets", "backgrounds"))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read backgrounds directory: %v", err)
+		}
+		bgSetIndex := hexToInt(bgSetHash) % len(bgSets)
+		r.BGSet = bgSets[bgSetIndex].Name()
 	}
-	return int(num)
+
+	return composeImage(parts, r.Size, r.BGSet, r.Set, hashString[0:12])
 }
 
 func selectPart(hashPart string, partPath string) string {
-	pattern := filepath.Join(assetsDir, partPath, "*.png")
-	files, err := filepath.Glob(pattern)
-	if err != nil || len(files) == 0 {
-		log.Printf("No files found for pattern: %s", pattern)
+	// Формируем полный путь к директории с изображениями
+	dirPath := filepath.Join("assets", partPath)
+
+	// Читаем содержимое директории
+	entries, err := assetsFS.ReadDir(dirPath)
+	if err != nil {
+		log.Printf("Error reading directory %s: %v", dirPath, err)
 		return ""
 	}
 
-	index := hexToInt(hashPart) % len(files)
-	return files[index]
+	// Собираем только PNG файлы
+	var matches []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".png") {
+			fullPath := filepath.Join(dirPath, entry.Name())
+			matches = append(matches, fullPath)
+		}
+	}
+
+	// Добавляем естественную сортировку
+	natsort.Sort(matches)
+
+	if len(matches) == 0 {
+		log.Printf("No PNG files found in directory: %s", dirPath)
+		return ""
+	}
+
+	// Выбираем файл на основе хеша
+	index := hexToInt(hashPart) % len(matches)
+	return matches[index]
 }
 
 func getSetDimensions(set string) (int, int) {
@@ -145,39 +200,44 @@ func getSetDimensions(set string) (int, int) {
 	}
 }
 
-func composeImage(parts map[string]string, size string, bgSet string, set string, text string) (image.Image, error) {
-	// Получаем размеры для текущего набора
+func composeImage(parts map[string]string, size string, bgSet string, set string, bgSetHashPart string) (image.Image, error) {
 	width, height := getSetDimensions(set)
 	base := image.NewRGBA(image.Rect(0, 0, width, height))
 
-	// Выбираем и загружаем фон если указан bgSet
+	// Обработка фона
 	if bgSet != "" {
-		bgPattern := filepath.Join(assetsDir, "backgrounds", bgSet, "*.png")
-		bgFiles, err := filepath.Glob(bgPattern)
+		bgDirPath := filepath.Join("assets", "backgrounds", bgSet)
+
+		// Читаем содержимое директории с фонами
+		entries, err := assetsFS.ReadDir(bgDirPath)
 		if err != nil {
-			return nil, fmt.Errorf("error finding background files: %v", err)
-		}
-
-		if len(bgFiles) > 0 {
-			// Генерируем индекс фона на основе хеша текста
-			hash := sha1.New()
-			hash.Write([]byte(text))
-			hashBytes := hash.Sum(nil)
-			hashInt := binary.BigEndian.Uint64(hashBytes)
-			bgIndex := int(hashInt % uint64(len(bgFiles)))
-
-			// Загружаем и масштабируем выбранный фон
-			bgImg, err := loadAndResizeImage(bgFiles[bgIndex], width, height)
-			if err != nil {
-				return nil, fmt.Errorf("error loading background: %v", err)
+			log.Printf("Error reading background directory %s: %v", bgDirPath, err)
+		} else {
+			// Собираем все PNG файлы в директории
+			var bgFiles []string
+			for _, entry := range entries {
+				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".png") {
+					bgFiles = append(bgFiles, filepath.Join(bgDirPath, entry.Name()))
+				}
 			}
-			draw.Draw(base, base.Bounds(), bgImg, image.Point{}, draw.Over)
+
+			if len(bgFiles) > 0 {
+				bgIndex := hexToInt(bgSetHashPart) % len(bgFiles)
+
+				// Загружаем и масштабируем выбранный фон
+				bgImg, err := loadAndResizeImage(bgFiles[bgIndex], width, height)
+				if err != nil {
+					return nil, fmt.Errorf("error loading background: %v", err)
+				}
+				draw.Draw(base, base.Bounds(), bgImg, image.Point{}, draw.Over)
+			}
 		}
 	}
 
 	// Получаем порядок отрисовки
 	order := getPartsOrder(set)
 
+	// Отрисовываем все части
 	for _, partType := range order {
 		if partPath, ok := parts[partType]; ok && partPath != "" {
 			partImg, err := loadAndResizeImage(partPath, width, height)
@@ -189,16 +249,37 @@ func composeImage(parts map[string]string, size string, bgSet string, set string
 		}
 	}
 
-	// Дополнительное масштабирование если указан параметр size
+	// Масштабируем если нужно
 	if size != "" {
 		return resizeImage(base, size)
 	}
-	if base != nil {
-		return base, nil
-	} else {
-		return nil, fmt.Errorf("failed to generate image")
-	}
 
+	return base, nil
+}
+
+func splitHashIntoParts(hash string, count int) []string {
+	partLength := len(hash) / count
+	parts := make([]string, count)
+	for i := 0; i < count; i++ {
+		start := i * partLength
+		end := (i + 1) * partLength
+		if i == count-1 {
+			end = len(hash)
+		}
+		parts[i] = hash[start:end]
+	}
+	// Добавляем дублирование как в Python
+	parts = append(parts, parts...)
+	return parts
+}
+
+// Конвертирует HEX-строку в число
+func hexToInt(hexStr string) int {
+	num, err := strconv.ParseInt(hexStr, 16, 64)
+	if err != nil {
+		return 0
+	}
+	return int(num)
 }
 
 // getPartsOrder возвращает порядок отрисовки частей для каждого набора
@@ -217,12 +298,12 @@ func getPartsOrder(set string) []string {
 	case "set2":
 		// Порядок для монстров
 		return []string{
-			"body",       // 000#04Body
+			"facecolors", // 004#01FaceColors
+			"bodycolors", // 003#02BodyColors
 			"face",       // 006#03Faces
+			"body",       // 000#04Body
 			"mouth",      // 001#Mouth
 			"eyes",       // 002#Eyes
-			"bodycolors", // 003#02BodyColors
-			"facecolors", // 004#01FaceColors
 			"nose",       // 005#Nose
 		}
 
@@ -231,11 +312,11 @@ func getPartsOrder(set string) []string {
 		return []string{
 			"base",     // 005#01BaseFace - основной слой лица
 			"wave",     // 001#02Wave - волны/фон (если есть)
+			"antenna",  // 006#03Antenna - антенна
 			"eyes",     // 003#04Eyes - глаза
 			"eyebrows", // 002#05Eyebrows - брови
 			"nose",     // 004#06Nose - нос
 			"mouth",    // 000#07Mouth - рот
-			"antenna",  // 006#03Antenna - антенна
 		}
 
 	case "set4":
@@ -278,12 +359,10 @@ func loadAndResizeImage(path string, width, height int) (image.Image, error) {
 		return nil, err
 	}
 
-	// Если изображение уже нужного размера, возвращаем как есть
 	if img.Bounds().Dx() == width && img.Bounds().Dy() == height {
 		return img, nil
 	}
 
-	// Масштабируем изображение
 	return resizeImage(img, fmt.Sprintf("%dx%d", width, height))
 }
 
@@ -310,7 +389,7 @@ func resizeImage(img image.Image, size string) (image.Image, error) {
 }
 
 func loadImage(path string) (image.Image, error) {
-	file, err := os.Open(path)
+	file, err := assetsFS.Open(path)
 	if err != nil {
 		return nil, err
 	}

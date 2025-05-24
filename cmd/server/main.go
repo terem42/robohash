@@ -20,8 +20,12 @@ func hashHandler(w http.ResponseWriter, r *http.Request) {
 	ext := filepath.Ext(path)
 	text := strings.TrimSuffix(path, filepath.Ext(path))
 
+	if strings.HasPrefix(r.URL.Path, "favicon") {
+		http.NotFound(w, r)
+	}
+
 	if text == "" {
-		text = "example" // Значение по умолчанию
+		text = "example"
 	}
 
 	// Парсим параметры запроса
@@ -63,8 +67,6 @@ func hashHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	log.Printf("Robohash Go version %s", buildVersion)
 	http.HandleFunc("/", hashHandler)
-	http.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
-
 	fmt.Println("Server running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
