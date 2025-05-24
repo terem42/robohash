@@ -57,17 +57,28 @@ jobs:
               prs.data.forEach(pr => prSet.add(pr.number));
             }            
             
-            let prMarkdown = '';
+            const prDetails = [];
             for (const prNumber of prSet) {
               const pr = await github.rest.pulls.get({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: prNumber
               });
-              prMarkdown += `- [#${pr.data.number}](${pr.data.html_url}) ${pr.data.title}<br>`;
-              prMarkdown += `  - Author: @${pr.data.user.login}<br>`;
-              prMarkdown += `  - Merged: ${new Date(pr.data.merged_at).toLocaleDateString()}<br>`;
-            }
+              prDetails.push({
+                number: pr.data.number,
+                title: pr.data.title,
+                url: pr.data.html_url,
+                author: pr.data.user.login,
+                merged_at: new Date(pr.data.merged_at).toLocaleDateString()
+              });
+            }            
+            
+            prDetails.sort((a, b) => b.number - a.number);            
+            
+            const prMarkdown = prDetails.map(pr => 
+              `- [#${pr.number}](${pr.url}) ${pr.title}  \n` +
+              `  _Merged ${pr.merged_at} by @${pr.author}_`
+            ).join('\n\n');
             
             return prMarkdown || 'No pull requests found';
 
@@ -106,11 +117,11 @@ jobs:
             
             ### 📦 Included Changes
             
-            ${{ steps.get-prs.outputs.result || 'No pull requests found' }}
+            ${{ fromJSON('"' + steps.get-prs.outputs.result + '"') || 'No pull requests found' }}
             
             ### 🔗 Full Changelog
             
-            [Compare with previous release](https://github.com/terem42/robohash/compare/${{ steps.get-prs.outputs.last_tag || 'initial' }}...${{ github.ref_name }})
+            [Compare changes](https://github.com/terem42/robohash/compare/${{ steps.get-prs.outputs.last_tag || 'initial' }}...${{ github.ref_name }})
           draft: false
           prerelease: false
           token: ${{ secrets.CR_PAT }}
