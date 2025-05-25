@@ -20,6 +20,8 @@ import (
 //go:embed assets
 var assetsFS embed.FS
 
+var imageCache = NewImageCache(77) // 77Mb Cache for images
+
 type RoboHash struct {
 	Text  string
 	Set   string
@@ -327,16 +329,43 @@ func getPartsOrder(set string) []string {
 }
 
 func loadAndResizeImage(path string, width, height int) (image.Image, error) {
-	img, err := loadImage(path)
+
+	resizedKey := fmt.Sprintf("%s|%dx%d", path, width, height)
+	if img, ok := imageCache.Get(resizedKey); ok {
+		return img, nil
+	}
+
+	originalKey := fmt.Sprintf("%s|original", path)
+
+	var img image.Image
+
+	if cached, ok := imageCache.Get(originalKey); ok {
+		img = cached
+	} else {
+		var err error
+		img, err = loadImage(path)
+		if err != nil {
+			return nil, err
+		}
+		bounds := img.Bounds()
+		imgSize := bounds.Dx() * bounds.Dy() * 4
+		imageCache.Set(originalKey, img, imgSize)
+	}
+
+	bounds := img.Bounds()
+	if bounds.Dx() == width && bounds.Dy() == height {
+		return img, nil
+	}
+
+	resizedImg, err := resizeImage(img, fmt.Sprintf("%dx%d", width, height))
 	if err != nil {
 		return nil, err
 	}
 
-	if img.Bounds().Dx() == width && img.Bounds().Dy() == height {
-		return img, nil
-	}
+	resizedSize := width * height * 4
+	imageCache.Set(resizedKey, resizedImg, resizedSize)
 
-	return resizeImage(img, fmt.Sprintf("%dx%d", width, height))
+	return resizedImg, nil
 }
 
 func resizeImage(img image.Image, size string) (image.Image, error) {
