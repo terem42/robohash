@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Kagami/go-avif"
+	"github.com/chai2010/webp"
 )
 
 type testCase struct {
@@ -18,6 +19,7 @@ type testCase struct {
 	bgSet         string
 	png_expected  string
 	avif_expected string
+	webp_expected string
 }
 
 func TestRoboHashGeneration(t *testing.T) {
@@ -30,6 +32,7 @@ func TestRoboHashGeneration(t *testing.T) {
 			bgSet:         "",
 			png_expected:  "3f6f32e7aeac1cae6c62600f6f879779",
 			avif_expected: "e58f7e3392f04ae009945d6c864de07b",
+			webp_expected: "f38f40dde6152be2d4a740fe51dc2ebd",
 		},
 		{
 			name:          "set2 with different text",
@@ -39,6 +42,7 @@ func TestRoboHashGeneration(t *testing.T) {
 			bgSet:         "",
 			png_expected:  "ae5d7352f49b55ff4af0a09048c0663e",
 			avif_expected: "7e8f23372d80791c83d346306d7c8ee6",
+			webp_expected: "8e89dd256c7b5ffc6769fbb46a5dabb2",
 		},
 		{
 			name:          "set3 with background",
@@ -48,6 +52,7 @@ func TestRoboHashGeneration(t *testing.T) {
 			bgSet:         "bg1",
 			png_expected:  "508d1f14512da60aa3ba9bd93f3937e3",
 			avif_expected: "e1e14027059152c8af398881fc11d58b",
+			webp_expected: "9bb4a79588921bc4eb3e663d5e84b057",
 		},
 		{
 			name:          "set4 with custom size",
@@ -57,6 +62,7 @@ func TestRoboHashGeneration(t *testing.T) {
 			bgSet:         "",
 			png_expected:  "7cbc9d0fde39a9644d3322ab93c14106",
 			avif_expected: "7975ef5c2b1162c469d22a855d9d051e",
+			webp_expected: "51ab01e37530843b1f95ab0f82fc7eac",
 		},
 		{
 			name:          "set5 human avatar",
@@ -66,6 +72,7 @@ func TestRoboHashGeneration(t *testing.T) {
 			bgSet:         "bg2",
 			png_expected:  "997f188de3228e39616b1d154a1f257d",
 			avif_expected: "0fbed7170d0f8cb6439e99b9224e7069",
+			webp_expected: "5a04bef70337ef4977345a1ce035fd24",
 		},
 	}
 
@@ -83,23 +90,33 @@ func TestRoboHashGeneration(t *testing.T) {
 				t.Fatal("Generate() returned nil image")
 			}
 
-			pngBuf := new(bytes.Buffer)
-			if err := png.Encode(pngBuf, img); err != nil {
+			imgBuf := new(bytes.Buffer)
+			if err := png.Encode(imgBuf, img); err != nil {
 				t.Fatalf("PNG encode failed: %v", err)
 			}
-			pngHash := md5Hash(pngBuf.Bytes())
-			if pngHash != tt.png_expected {
-				t.Errorf("PNG hash mismatch: got %s, want %s", pngHash, tt.png_expected)
+			imgHash := md5Hash(imgBuf.Bytes())
+			if imgHash != tt.png_expected {
+				t.Errorf("PNG hash mismatch: got %s, want %s", imgHash, tt.png_expected)
 			}
 
-			avifBuf := new(bytes.Buffer)
-			if err := avif.Encode(avifBuf, img, nil); err != nil {
+			imgBuf.Reset()
+			if err := avif.Encode(imgBuf, img, nil); err != nil {
 				t.Fatalf("AVIF encode failed: %v", err)
 			}
-			avifHash := md5Hash(avifBuf.Bytes())
-			if avifHash != tt.avif_expected {
-				t.Errorf("AVIF hash mismatch: got %s, want %s", avifHash, tt.avif_expected)
+			imgHash = md5Hash(imgBuf.Bytes())
+			if imgHash != tt.avif_expected {
+				t.Errorf("AVIF hash mismatch: got %s, want %s", imgHash, tt.avif_expected)
 			}
+
+			imgBuf.Reset()
+			if err := webp.Encode(imgBuf, img, &webp.Options{Lossless: true}); err != nil {
+				t.Fatalf("WEBP encode failed: %v", err)
+			}
+			imgHash = md5Hash(imgBuf.Bytes())
+			if imgHash != tt.webp_expected {
+				t.Errorf("WEBP hash mismatch: got %s, want %s", imgHash, tt.webp_expected)
+			}
+
 		})
 	}
 }

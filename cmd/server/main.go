@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Kagami/go-avif"
+	"github.com/chai2010/webp"
 	"github.com/terem42/robohash/robohash"
 )
 
@@ -68,6 +69,12 @@ func hashHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "image/avif")
+	case ".webp":
+		if err := webp.Encode(imgBuf, img, &webp.Options{Lossless: true}); err != nil {
+			http.Error(w, fmt.Sprintf("Error encoding WEBP image: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "image/webp")
 	default:
 		if err := png.Encode(imgBuf, img); err != nil {
 			http.Error(w, fmt.Sprintf("Error encoding PNG image: %v", err), http.StatusInternalServerError)

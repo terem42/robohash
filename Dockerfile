@@ -1,6 +1,6 @@
 FROM docker.io/golang:1.24.3-alpine AS builder
 
-RUN apk add --no-cache build-base xz git aom-dev && \
+RUN apk add --no-cache build-base xz git aom-dev libwebp-dev && \
     wget -O /tmp/upx.tar.xz https://github.com/upx/upx/releases/download/v5.0.1/upx-5.0.1-amd64_linux.tar.xz && \
     tar -xJf /tmp/upx.tar.xz -C /tmp && \
     mv /tmp/upx-5.0.1-amd64_linux/upx /bin/upx && \
