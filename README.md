@@ -3,9 +3,9 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/terem42/robohash)](https://goreportcard.com/report/github.com/terem42/robohash)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A Golang implementation of Robohash, the awesome library for generating unique robot/avatar images from any text hash. This is a port of the original [Robohash](https://github.com/e1ven/Robohash) project with performance improvements and additional features. 
+A Golang implementation of Robohash, the awesome library for generating unique robot/avatar images from any text hash. This is a port of the original [Robohash](https://github.com/e1ven/Robohash) project with performance improvements and additional features, such as performance improvements, image caching and AVIF/WebP support
 
-Alllows image returned being encoded either PNG, or AVIF. PNG format is used by default, AVIF when .avif extension is supplied
+Alllows image returned being encoded either PNG, WEBP or AVIF. PNG format is used by default, AVIF or WEBP when either .avif or .webp extensions are supplied
 
 Available as a module or standalone HTTP server.
 
@@ -63,10 +63,15 @@ http://yourserver.com/{TEXT}.avif?{PARAMETERS}
    https://robohash.yourserver.com/dave@email.com.png?set=set5
    ```
 
-4. **Human avatar encoded as AVIF**:
+5. **Human avatar encoded as AVIF**:
    ```
    https://robohash.yourserver.com/dave@email.com.avif?set=set5
    ```   
+6. **Human avatar encoded as WEBP**:
+   ```
+   https://robohash.yourserver.com/dave@email.com.webp?set=set5
+   ```   
+
 
 ### Available Parameters
 
@@ -131,18 +136,63 @@ func main() {
 }
 ```
 
+## HTTP Caching Headers
+
+The server automatically adds optimal caching headers for generated images  
+Content-Type is set, depending on returned image  
+Example for PNG images
+
+```http
+HTTP/1.1 200 OK
+Cache-Control: public, max-age=31536000
+ETag: "a1b2c3d4e5f6..."
+Last-Modified: Wed, 21 Oct 2023 07:28:00 GMT
+Content-Type: image/png
+Content-Length: 24872
+```
+
+## Decoded PNG assets cache 
+
+to speed up image generation, package uses internal PNG assets image memory caching in decoded form
+
+  - Stores parsed source images in memory
+  - LRU eviction policy (max 80MB )
+  - Key format: `path|widthxheight` (e.g. `assets/set1/blue/003#01Body/5.png|300x300`)
+
+## Nginx Configuration
+
+Example production configuration with caching:
+
+```nginx
+proxy_cache_path /var/cache/nginx/robohash 
+    levels=1:2 
+    keys_zone=robohash_cache:10m
+    inactive=1y
+    max_size=1g;
+
+server {
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_cache robohash_cache;
+        proxy_cache_valid 200 1y;
+        proxy_cache_use_stale error timeout updating;
+        add_header X-Cache-Status $upstream_cache_status;
+    }
+}
+```
+
 ## Deployment
 
-1. **Standalone binary**:
+1. **Standalone binary with embedded resources**:
    ```bash
-   go build -o robohash
-   ./robohash -port 8080
+   go build -o robohash-go ./cmd/server
+   ./robohash-go
    ```
 
 2. **Docker**:
    ```bash
-   docker build -t robohash .
-   docker run -p 8080:8080 robohash
+   docker build -t ghcr.io/terem42/robohash .
+   docker run -p 8080:8080 ghcr.io/terem42/robohash
    ```
 
 3. **Kubernetes**:
