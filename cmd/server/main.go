@@ -1,12 +1,17 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"image/png"
 	"log"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Kagami/go-avif"
 	"github.com/terem42/robohash/robohash"
@@ -14,14 +19,26 @@ import (
 
 var buildVersion = "HEAD"
 
+func generateETag(data []byte) string {
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status": "ok", "version": "` + buildVersion + `", "timestamp": "` + time.Now().UTC().Format(time.RFC3339) + `"}`))
+}
+
 func hashHandler(w http.ResponseWriter, r *http.Request) {
 
 	path := strings.TrimPrefix(r.URL.Path, "/")
 	ext := filepath.Ext(path)
 	text := strings.TrimSuffix(path, filepath.Ext(path))
 
-	if strings.HasPrefix(r.URL.Path, "favicon") {
+	if strings.HasPrefix(path, "favicon") {
 		http.NotFound(w, r)
+		return
 	}
 
 	if text == "" {
@@ -42,25 +59,33 @@ func hashHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	imgBuf := new(bytes.Buffer)
+
 	switch strings.ToLower(ext) {
 	case ".avif":
-		w.Header().Set("Content-Type", "image/avif")
-		if err := avif.Encode(w, img, nil); err != nil {
+		if err := avif.Encode(imgBuf, img, nil); err != nil {
 			http.Error(w, fmt.Sprintf("Error encoding AVIF image: %v", err), http.StatusInternalServerError)
 			return
 		}
+		w.Header().Set("Content-Type", "image/avif")
 	default:
-		w.Header().Set("Content-Type", "image/png")
-		if err := png.Encode(w, img); err != nil {
+		if err := png.Encode(imgBuf, img); err != nil {
 			http.Error(w, fmt.Sprintf("Error encoding PNG image: %v", err), http.StatusInternalServerError)
 			return
 		}
+		w.Header().Set("Content-Type", "image/png")
 	}
+	w.Header().Set("Cache-Control", "public, max-age=31536000")
+	w.Header().Set("Content-Length", strconv.Itoa(len(imgBuf.Bytes())))
+	w.Header().Set("ETag", `"`+generateETag(imgBuf.Bytes())+`"`)
+	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+	w.Write(imgBuf.Bytes())
 
 }
 
 func main() {
 	log.Printf("Robohash Go version %s", buildVersion)
+	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/", hashHandler)
 	fmt.Println("Server running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
