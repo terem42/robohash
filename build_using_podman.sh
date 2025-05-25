@@ -19,5 +19,5 @@ build_version=$(git describe --tags --always 2>/dev/null || echo "v0.0.1")
 
 rm -rf app-bin/*
 
-podman build --build-arg BUILD_VERSION="$build_version" \
+podman build --format=docker --build-arg BUILD_VERSION="$build_version" \
   -t "ghcr.io/terem42/robohash:$build_version" .

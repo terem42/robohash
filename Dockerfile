@@ -1,11 +1,14 @@
 FROM docker.io/golang:1.24.3-alpine AS builder
 
 RUN apk add --no-cache build-base xz git aom-dev && \
-    wget -O /tmp/upx.tar.xz https://github.com/upx/upx/releases/download/v5.0.0/upx-5.0.0-amd64_linux.tar.xz && \
+    wget -O /tmp/upx.tar.xz https://github.com/upx/upx/releases/download/v5.0.1/upx-5.0.1-amd64_linux.tar.xz && \
     tar -xJf /tmp/upx.tar.xz -C /tmp && \
-    mv /tmp/upx-5.0.0-amd64_linux/upx /bin/upx && \
+    mv /tmp/upx-5.0.1-amd64_linux/upx /bin/upx && \
     chmod a+x /bin/upx && \
-    rm -rf /tmp/*
+    rm -rf /tmp/* && \
+    wget -O /static-curl https://github.com/moparisthebest/static-curl/releases/download/v8.11.0/curl-amd64 && \
+    chmod +x /static-curl && \
+    ls -al /static-curl
 
 WORKDIR /src
 
@@ -26,9 +29,15 @@ FROM scratch
 
 WORKDIR /app
 
+COPY --from=builder /static-curl /bin/curl
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
 COPY --from=builder /app/robohash .
 
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD ["/bin/curl", "-f", "-s", "http://localhost:8080/health"]
 
 LABEL org.opencontainers.image.title="Robohash" \
       org.opencontainers.image.description="Robohash generator Golang implementation" \
