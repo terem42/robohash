@@ -5,10 +5,7 @@ RUN apk add --no-cache build-base xz git aom-dev && \
     tar -xJf /tmp/upx.tar.xz -C /tmp && \
     mv /tmp/upx-5.0.1-amd64_linux/upx /bin/upx && \
     chmod a+x /bin/upx && \
-    rm -rf /tmp/* && \
-    wget -O /static-curl https://github.com/moparisthebest/static-curl/releases/download/v8.11.0/curl-amd64 && \
-    chmod +x /static-curl && \
-    ls -al /static-curl
+    rm -rf /tmp/*
 
 WORKDIR /src
 
@@ -16,6 +13,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+
+RUN set -x && \
+    cd healthcheck-app && \
+    make
 
 ARG BUILD_VERSION
 
@@ -29,15 +30,14 @@ FROM scratch
 
 WORKDIR /app
 
-COPY --from=builder /static-curl /bin/curl
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /src/healthcheck-app/healthcheck /bin/healthcheck
 
 COPY --from=builder /app/robohash .
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD ["/bin/curl", "-f", "-s", "http://localhost:8080/health"]
+    CMD ["/bin/healthcheck", "http://localhost:8080/health"]
 
 LABEL org.opencontainers.image.title="Robohash" \
       org.opencontainers.image.description="Robohash generator Golang implementation" \
