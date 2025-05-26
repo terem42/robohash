@@ -5,7 +5,7 @@
 
 A Golang implementation of Robohash, the awesome library for generating unique robot/avatar images from any text hash. This is a port of the original [Robohash](https://github.com/e1ven/Robohash) project with performance improvements and additional features, such as performance improvements, image caching and AVIF/WebP support
 
-Alllows image returned being encoded either PNG, WEBP or AVIF. PNG format is used by default, AVIF or WEBP when either .avif or .webp extensions are supplied
+Alllows image returned being encoded either PNG, lossless WEBP or AVIF. PNG format is used by default, AVIF or WEBP when either .avif or .webp extensions are supplied
 
 Available as a module or standalone HTTP server.
 
@@ -151,13 +151,26 @@ Content-Type: image/png
 Content-Length: 24872
 ```
 
-## Decoded PNG assets cache 
+## Decoded PNG assets cache
 
-to speed up image generation, package uses internal PNG assets image memory caching in decoded form
+to significantly speed up image generation, package uses internal PNG assets image memory caching, both original and resized
 
   - Stores parsed source images in memory
   - LRU eviction policy (max 80MB )
   - Key format: `path|widthxheight` (e.g. `assets/set1/blue/003#01Body/5.png|300x300`)
+
+The cache size can be configured using environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ROBOHASH_IMG_CACHE_SIZE` | 100 | Maximum image cache size in megabytes |
+
+Example:
+```bash
+# Set cache size to 100MB
+export ROBOHASH_IMG_CACHE_SIZE=100
+docker run -e ROBOHASH_IMG_CACHE_SIZE=100 -p 8080:8080 ghcr.io/terem42/robohash
+
 
 ## Nginx Configuration
 

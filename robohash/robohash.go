@@ -20,7 +20,7 @@ import (
 //go:embed assets
 var assetsFS embed.FS
 
-var imageCache = NewImageCache(80) // Cache for decoded PNG images
+var imageCache = NewImageCache() // Cache for decoded PNG images
 
 type RoboHash struct {
 	Text  string
