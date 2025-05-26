@@ -156,7 +156,7 @@ Content-Length: 24872
 to significantly speed up image generation, package uses internal PNG assets image memory caching, both original and resized
 
   - Stores parsed source images in memory
-  - LRU eviction policy (max 80MB )
+  - LRU eviction policy
   - Key format: `path|widthxheight` (e.g. `assets/set1/blue/003#01Body/5.png|300x300`)
 
 The cache size can be configured using environment variables
