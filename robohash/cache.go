@@ -3,6 +3,8 @@ package robohash
 import (
 	"container/list"
 	"image"
+	"os"
+	"strconv"
 	"sync"
 )
 
@@ -20,7 +22,19 @@ type cacheItem struct {
 	size int
 }
 
-func NewImageCache(maxSizeMB int) *ImageCache {
+func getCacheSize() int {
+	defaultSize := 50
+
+	if sizeStr := os.Getenv("ROBOHASH_IMG_CACHE_SIZE"); sizeStr != "" {
+		if size, err := strconv.Atoi(sizeStr); err == nil && size > 0 {
+			return size
+		}
+	}
+	return defaultSize
+}
+
+func NewImageCache() *ImageCache {
+	maxSizeMB := getCacheSize()
 	return &ImageCache{
 		maxSize: maxSizeMB * 1024 * 1024,
 		list:    list.New(),
