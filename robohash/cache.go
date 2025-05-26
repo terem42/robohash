@@ -6,15 +6,14 @@ import (
 	"os"
 	"strconv"
 	"sync"
+
+	"github.com/cespare/xxhash/v2"
 )
 
-type ImageCache struct {
-	maxSize     int
-	currentSize int
-	mu          sync.Mutex
-	list        *list.List
-	items       map[string]*list.Element
-}
+const (
+	shardSizeMB   = 10
+	minShardCount = 4
+)
 
 type cacheItem struct {
 	key  string
@@ -22,59 +21,97 @@ type cacheItem struct {
 	size int
 }
 
-func getCacheSize() int {
-	defaultSize := 50
+type ShardedImageCache struct {
+	shards []*imageCacheShard
+}
 
+type imageCacheShard struct {
+	mu          sync.RWMutex
+	list        *list.List
+	items       map[string]*list.Element
+	currentSize int
+	maxSize     int
+}
+
+func NewImageCache() *ShardedImageCache {
+	maxSizeMB := getCacheSizeMB()
+	shardCount := calculateShardCount(maxSizeMB)
+
+	shards := make([]*imageCacheShard, shardCount)
+	for i := range shards {
+		shards[i] = &imageCacheShard{
+			list:    list.New(),
+			items:   make(map[string]*list.Element),
+			maxSize: (maxSizeMB * 1024 * 1024) / shardCount,
+		}
+	}
+
+	return &ShardedImageCache{
+		shards: shards,
+	}
+}
+
+func calculateShardCount(maxSizeMB int) int {
+	shardCount := maxSizeMB / shardSizeMB
+	if shardCount < minShardCount {
+		return minShardCount
+	}
+	return shardCount
+}
+
+func getCacheSizeMB() int {
 	if sizeStr := os.Getenv("ROBOHASH_IMG_CACHE_SIZE"); sizeStr != "" {
 		if size, err := strconv.Atoi(sizeStr); err == nil && size > 0 {
 			return size
 		}
 	}
-	return defaultSize
+	return 100 // Default size 100MB
 }
 
-func NewImageCache() *ImageCache {
-	maxSizeMB := getCacheSize()
-	return &ImageCache{
-		maxSize: maxSizeMB * 1024 * 1024,
-		list:    list.New(),
-		items:   make(map[string]*list.Element),
-	}
+func (c *ShardedImageCache) getShard(key string) *imageCacheShard {
+	hash := xxhash.Sum64String(key)
+	return c.shards[hash%uint64(len(c.shards))]
 }
 
-func (c *ImageCache) Get(key string) (image.Image, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (c *ShardedImageCache) Get(key string) (image.Image, bool) {
+	shard := c.getShard(key)
+	shard.mu.RLock()
+	defer shard.mu.RUnlock()
 
-	if elem, ok := c.items[key]; ok {
-		c.list.MoveToFront(elem)
+	if elem, ok := shard.items[key]; ok {
+		shard.list.MoveToFront(elem)
 		return elem.Value.(*cacheItem).img, true
 	}
 	return nil, false
 }
 
-func (c *ImageCache) Set(key string, img image.Image, imgSize int) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (c *ShardedImageCache) Set(key string, img image.Image, imgSize int) {
+	shard := c.getShard(key)
+	shard.mu.Lock()
+	defer shard.mu.Unlock()
 
-	if elem, ok := c.items[key]; ok {
-		c.list.MoveToFront(elem)
-		oldSize := elem.Value.(*cacheItem).size
-		elem.Value.(*cacheItem).img = img
-		elem.Value.(*cacheItem).size = imgSize
-		c.currentSize += imgSize - oldSize
+	if elem, ok := shard.items[key]; ok {
+		oldItem := elem.Value.(*cacheItem)
+		oldSize := oldItem.size
+		oldItem.img = img
+		oldItem.size = imgSize
+		shard.currentSize += imgSize - oldSize
 		return
 	}
 
-	for c.currentSize+imgSize > c.maxSize && c.list.Len() > 0 {
-		oldest := c.list.Back()
-		c.list.Remove(oldest)
-		delete(c.items, oldest.Value.(*cacheItem).key)
-		c.currentSize -= oldest.Value.(*cacheItem).size
+	for shard.currentSize+imgSize > shard.maxSize && shard.list.Len() > 0 {
+		oldest := shard.list.Back()
+		shard.list.Remove(oldest)
+		delete(shard.items, oldest.Value.(*cacheItem).key)
+		shard.currentSize -= oldest.Value.(*cacheItem).size
 	}
 
-	item := &cacheItem{key: key, img: img, size: imgSize}
-	elem := c.list.PushFront(item)
-	c.items[key] = elem
-	c.currentSize += imgSize
+	item := &cacheItem{
+		key:  key,
+		img:  img,
+		size: imgSize,
+	}
+	elem := shard.list.PushFront(item)
+	shard.items[key] = elem
+	shard.currentSize += imgSize
 }
