@@ -17,16 +17,16 @@ import (
 var assetsDir = "assets"
 
 func init() {
-	// Настройка vips для многопоточности
 	vips.Startup(&vips.Config{
-		ConcurrencyLevel: 0, // 0 = автоматически определить количество потоков
-		MaxCacheFiles:    100,
-		MaxCacheMem:      50 * 1024 * 1024, // 50MB cache
-		MaxCacheSize:     200,
+		ConcurrencyLevel: 0,
+		MaxCacheFiles:    300,
+		MaxCacheMem:      50 * 1024 * 1024, // 50MB initial cache
+		MaxCacheSize:     100,
 		ReportLeaks:      false,
 		CacheTrace:       false,
 		CollectStats:     false,
 	})
+	vips.LoggingSettings(nil, vips.LogLevelWarning)
 }
 
 type RoboHash struct {
@@ -199,16 +199,13 @@ func getSetDimensions(set string) (int, int) {
 	}
 }
 
-// Оптимизированная функция нормализации - проверяет состояние перед вызовами vips
 func normalizeImage(img *vips.ImageRef) error {
-	// Проверяем цветовое пространство только если нужно
 	if img.Interpretation() != vips.InterpretationSRGB {
 		if err := img.ToColorSpace(vips.InterpretationSRGB); err != nil {
 			return fmt.Errorf("failed to convert to sRGB: %v", err)
 		}
 	}
 
-	// Проверяем количество каналов только если нужно
 	bands := img.Bands()
 	if bands == 3 {
 		if err := img.AddAlpha(); err != nil {
@@ -224,13 +221,11 @@ func normalizeImage(img *vips.ImageRef) error {
 func composeImage(parts map[string]string, size string, bgSet string, set string, bgSetHashPart string) (*vips.ImageRef, error) {
 	width, height := getSetDimensions(set)
 
-	// Создаем прозрачное изображение за один вызов
 	base, err := vips.Black(width, height)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create base image: %v", err)
 	}
 
-	// Объединяем установку цветового пространства и альфы
 	if err := base.ToColorSpace(vips.InterpretationSRGB); err != nil {
 		base.Close()
 		return nil, fmt.Errorf("failed to set color space: %v", err)
@@ -241,13 +236,11 @@ func composeImage(parts map[string]string, size string, bgSet string, set string
 		return nil, fmt.Errorf("failed to add alpha channel: %v", err)
 	}
 
-	// Делаем изображение прозрачным одним вызовом
 	if err := base.Linear([]float64{1, 1, 1, 0}, []float64{0, 0, 0, 0}); err != nil {
 		base.Close()
 		return nil, fmt.Errorf("failed to make image transparent: %v", err)
 	}
 
-	// Добавляем фон если указан
 	if bgSet != "" {
 		bgDirPath := filepath.Join(assetsDir, "backgrounds", bgSet)
 
@@ -271,14 +264,12 @@ func composeImage(parts map[string]string, size string, bgSet string, set string
 					return nil, fmt.Errorf("error loading background: %v", err)
 				}
 
-				// Нормализуем фоновое изображение (оптимизированная функция)
 				if err := normalizeImage(bgImg); err != nil {
 					base.Close()
 					bgImg.Close()
 					return nil, fmt.Errorf("error normalizing background: %v", err)
 				}
 
-				// Композитинг фона
 				if err := base.Composite(bgImg, vips.BlendModeOver, 0, 0); err != nil {
 					base.Close()
 					bgImg.Close()
@@ -299,14 +290,12 @@ func composeImage(parts map[string]string, size string, bgSet string, set string
 				continue
 			}
 
-			// Нормализуем изображение части (оптимизированная функция)
 			if err := normalizeImage(partImg); err != nil {
 				log.Printf("Error normalizing part %s: %v", partType, err)
 				partImg.Close()
 				continue
 			}
 
-			// Композитинг части
 			if err := base.Composite(partImg, vips.BlendModeOver, 0, 0); err != nil {
 				log.Printf("Error compositing part %s: %v", partType, err)
 			}
@@ -314,7 +303,6 @@ func composeImage(parts map[string]string, size string, bgSet string, set string
 		}
 	}
 
-	// Изменяем размер только если необходимо
 	if size != "" {
 		sizeParts := strings.Split(size, "x")
 		if len(sizeParts) == 2 {
@@ -423,13 +411,11 @@ func getPartsOrder(set string) []string {
 }
 
 func loadAndResizeImage(path string, width, height int) (*vips.ImageRef, error) {
-	// Vips автоматически кеширует загруженные изображения
 	img, err := vips.LoadImageFromFile(path, &vips.ImportParams{})
 	if err != nil {
 		return nil, err
 	}
 
-	// Изменение размера также кешируется
 	if img.Width() != width || img.Height() != height {
 		scale := float64(width) / float64(img.Width())
 		if err := img.Resize(scale, vips.KernelLanczos3); err != nil {
@@ -441,25 +427,20 @@ func loadAndResizeImage(path string, width, height int) (*vips.ImageRef, error) 
 	return img, nil
 }
 
-// Оптимизированная функция изменения размера
 func resizeImageOptimized(img *vips.ImageRef, targetWidth, targetHeight int) (*vips.ImageRef, error) {
 	currentWidth := img.Width()
 	currentHeight := img.Height()
 
-	// Избегаем ненужных операций если размер уже правильный
 	if currentWidth == targetWidth && currentHeight == targetHeight {
 		return img, nil
 	}
 
-	// Вычисляем масштаб только один раз
 	scale := float64(targetWidth) / float64(currentWidth)
 
-	// Используем высококачественное изменение размера
 	if err := img.Resize(scale, vips.KernelLanczos3); err != nil {
 		return nil, fmt.Errorf("failed to resize image: %v", err)
 	}
 
-	// Обрезаем до точного размера только если нужно
 	newHeight := img.Height()
 	if newHeight != targetHeight {
 		if err := img.ExtractArea(0, 0, targetWidth, targetHeight); err != nil {

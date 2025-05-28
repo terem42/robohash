@@ -4,7 +4,6 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"runtime"
 	"strconv"
 	"testing"
 
@@ -24,20 +23,16 @@ type testCase struct {
 
 func setupTests() {
 	assetsDir = "../assets"
-	// Lock OS thread as vips is not goroutine-safe during initialization
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	vips.Startup(&vips.Config{
-		ConcurrencyLevel: 0, // 0 = автоматически определить количество потоков
+		ConcurrencyLevel: 0,
 		MaxCacheFiles:    100,
-		MaxCacheMem:      50 * 1024 * 1024, // 50MB cache
-		MaxCacheSize:     200,
-		ReportLeaks:      false,
+		MaxCacheMem:      50 * 1024 * 1024,
+		MaxCacheSize:     100,
+		ReportLeaks:      true,
 		CacheTrace:       false,
 		CollectStats:     false,
 	})
-
+	vips.LoggingSettings(nil, vips.LogLevelWarning)
 }
 
 func TestMain(m *testing.M) {
@@ -112,9 +107,8 @@ func TestRoboHashGeneration(t *testing.T) {
 			if img == nil {
 				t.Fatal("Generate() returned nil image")
 			}
-			defer img.Close() // Important: close vips image to prevent memory leaks
+			defer img.Close()
 
-			// Test PNG encoding
 			pngBuf, _, err := img.ExportPng(&vips.PngExportParams{
 				Quality: 100,
 			})
@@ -126,7 +120,6 @@ func TestRoboHashGeneration(t *testing.T) {
 				t.Errorf("PNG hash mismatch: got %s, want %s", imgHash, tt.png_expected)
 			}
 
-			// Test AVIF encoding
 			avifBuf, _, err := img.ExportAvif(&vips.AvifExportParams{
 				Quality: 100,
 			})
@@ -138,7 +131,6 @@ func TestRoboHashGeneration(t *testing.T) {
 				t.Errorf("AVIF hash mismatch: got %s, want %s", imgHash, tt.avif_expected)
 			}
 
-			// Test WebP encoding
 			webpBuf, _, err := img.ExportWebp(&vips.WebpExportParams{
 				Quality:  100,
 				Lossless: true,
@@ -189,7 +181,6 @@ func TestAnySet(t *testing.T) {
 	} else {
 		defer img.Close()
 
-		// Verify image has expected dimensions (should be one of the set dimensions)
 		width := img.Width()
 		height := img.Height()
 
@@ -252,13 +243,11 @@ func TestDifferentSizes(t *testing.T) {
 				return
 			}
 
-			// Parse expected dimensions
 			var expectedWidth, expectedHeight int
 			if _, err := fmt.Sscanf(size, "%dx%d", &expectedWidth, &expectedHeight); err != nil {
 				t.Fatalf("Failed to parse size %s: %v", size, err)
 			}
 
-			// Check actual dimensions
 			if img.Width() != expectedWidth || img.Height() != expectedHeight {
 				img.Close()
 				t.Errorf("Size mismatch: expected %dx%d, got %dx%d",
@@ -270,7 +259,6 @@ func TestDifferentSizes(t *testing.T) {
 }
 
 func TestConsistency(t *testing.T) {
-	// Test that the same input always produces the same output
 	text := "consistency_test"
 	set := "set1"
 
@@ -288,7 +276,6 @@ func TestConsistency(t *testing.T) {
 	}
 	defer img2.Close()
 
-	// Export both images as PNG and compare
 	png1, _, err := img1.ExportPng(&vips.PngExportParams{Quality: 100})
 	if err != nil {
 		t.Fatalf("Failed to export first image: %v", err)
