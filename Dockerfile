@@ -54,7 +54,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 LABEL org.opencontainers.image.title="Robohash" \
       org.opencontainers.image.description="Robohash generator Golang implementation" \
       org.opencontainers.image.authors="terem42" \
-      org.opencontainers.image.url="https://github.com/terem42/robohash" \
+      org.opencontainers.image.source="https://github.com/terem42/robohash" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.vendor="terem42"
 
