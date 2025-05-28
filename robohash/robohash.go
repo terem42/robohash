@@ -2,25 +2,38 @@ package robohash
 
 import (
 	"crypto/sha512"
-	"embed"
 	"encoding/hex"
 	"fmt"
-	"image"
-	"image/draw"
 	"log"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/davidbyttow/govips/v2/vips"
 	"github.com/facette/natsort"
-
-	draw2 "golang.org/x/image/draw"
 )
 
-//go:embed assets
-var assetsFS embed.FS
+var assetsDir = "assets"
 
-var imageCache = NewImageCache() // Cache for decoded PNG images
+func init() {
+	cacheSize := 100
+	if sizeStr := os.Getenv("ROBOHASH_IMG_CACHE_SIZE"); sizeStr != "" {
+		if size, err := strconv.Atoi(sizeStr); err == nil && size > 0 {
+			cacheSize = size
+		}
+	}
+	vips.Startup(&vips.Config{
+		ConcurrencyLevel: 0,
+		MaxCacheFiles:    300,
+		MaxCacheMem:      50 * 1024 * 1024, // 50MB initial cache
+		MaxCacheSize:     cacheSize,
+		ReportLeaks:      false,
+		CacheTrace:       false,
+		CollectStats:     false,
+	})
+	vips.LoggingSettings(nil, vips.LogLevelWarning)
+}
 
 type RoboHash struct {
 	Text  string
@@ -38,8 +51,7 @@ func NewRoboHash(text string, set string) *RoboHash {
 	}
 }
 
-func (r *RoboHash) Generate() (image.Image, error) {
-
+func (r *RoboHash) Generate() (*vips.ImageRef, error) {
 	if r.Set == "" {
 		r.Set = "set1"
 	}
@@ -52,7 +64,7 @@ func (r *RoboHash) Generate() (image.Image, error) {
 	hashParts := splitHashIntoParts(hashString, 11)
 
 	if r.Set == "any" {
-		sets, err := assetsFS.ReadDir(filepath.Join("assets"))
+		sets, err := os.ReadDir(filepath.Join(assetsDir))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read sets directory: %v", err)
 		}
@@ -76,7 +88,7 @@ func (r *RoboHash) Generate() (image.Image, error) {
 
 	switch r.Set {
 	case "set1":
-		entries, err := assetsFS.ReadDir(filepath.Join("assets", r.Set))
+		entries, err := os.ReadDir(filepath.Join(assetsDir, r.Set))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read set1 directory: %v", err)
 		}
@@ -139,7 +151,7 @@ func (r *RoboHash) Generate() (image.Image, error) {
 
 	bgSetHash := hashParts[3]
 	if r.BGSet == "any" {
-		bgSets, err := assetsFS.ReadDir(filepath.Join("assets", "backgrounds"))
+		bgSets, err := os.ReadDir(filepath.Join(assetsDir, "backgrounds"))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read backgrounds directory: %v", err)
 		}
@@ -151,9 +163,9 @@ func (r *RoboHash) Generate() (image.Image, error) {
 }
 
 func selectPart(hashPart string, partPath string) string {
-	dirPath := filepath.Join("assets", partPath)
+	dirPath := filepath.Join(assetsDir, partPath)
 
-	entries, err := assetsFS.ReadDir(dirPath)
+	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		log.Printf("Error reading directory %s: %v", dirPath, err)
 		return ""
@@ -193,14 +205,52 @@ func getSetDimensions(set string) (int, int) {
 	}
 }
 
-func composeImage(parts map[string]string, size string, bgSet string, set string, bgSetHashPart string) (image.Image, error) {
+func normalizeImage(img *vips.ImageRef) error {
+	if img.Interpretation() != vips.InterpretationSRGB {
+		if err := img.ToColorSpace(vips.InterpretationSRGB); err != nil {
+			return fmt.Errorf("failed to convert to sRGB: %v", err)
+		}
+	}
+
+	bands := img.Bands()
+	if bands == 3 {
+		if err := img.AddAlpha(); err != nil {
+			return fmt.Errorf("failed to add alpha channel: %v", err)
+		}
+	} else if bands != 4 {
+		return fmt.Errorf("unexpected number of bands: %d", bands)
+	}
+
+	return nil
+}
+
+func composeImage(parts map[string]string, size string, bgSet string, set string, bgSetHashPart string) (*vips.ImageRef, error) {
 	width, height := getSetDimensions(set)
-	base := image.NewRGBA(image.Rect(0, 0, width, height))
+
+	base, err := vips.Black(width, height)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create base image: %v", err)
+	}
+
+	if err := base.ToColorSpace(vips.InterpretationSRGB); err != nil {
+		base.Close()
+		return nil, fmt.Errorf("failed to set color space: %v", err)
+	}
+
+	if err := base.AddAlpha(); err != nil {
+		base.Close()
+		return nil, fmt.Errorf("failed to add alpha channel: %v", err)
+	}
+
+	if err := base.Linear([]float64{1, 1, 1, 0}, []float64{0, 0, 0, 0}); err != nil {
+		base.Close()
+		return nil, fmt.Errorf("failed to make image transparent: %v", err)
+	}
 
 	if bgSet != "" {
-		bgDirPath := filepath.Join("assets", "backgrounds", bgSet)
+		bgDirPath := filepath.Join(assetsDir, "backgrounds", bgSet)
 
-		entries, err := assetsFS.ReadDir(bgDirPath)
+		entries, err := os.ReadDir(bgDirPath)
 		if err != nil {
 			log.Printf("Error reading background directory %s: %v", bgDirPath, err)
 		} else {
@@ -216,9 +266,22 @@ func composeImage(parts map[string]string, size string, bgSet string, set string
 
 				bgImg, err := loadAndResizeImage(bgFiles[bgIndex], width, height)
 				if err != nil {
+					base.Close()
 					return nil, fmt.Errorf("error loading background: %v", err)
 				}
-				draw.Draw(base, base.Bounds(), bgImg, image.Point{}, draw.Over)
+
+				if err := normalizeImage(bgImg); err != nil {
+					base.Close()
+					bgImg.Close()
+					return nil, fmt.Errorf("error normalizing background: %v", err)
+				}
+
+				if err := base.Composite(bgImg, vips.BlendModeOver, 0, 0); err != nil {
+					base.Close()
+					bgImg.Close()
+					return nil, fmt.Errorf("error compositing background: %v", err)
+				}
+				bgImg.Close()
 			}
 		}
 	}
@@ -232,12 +295,37 @@ func composeImage(parts map[string]string, size string, bgSet string, set string
 				log.Printf("Error loading part %s (%s): %v", partType, partPath, err)
 				continue
 			}
-			draw.Draw(base, base.Bounds(), partImg, image.Point{}, draw.Over)
+
+			if err := normalizeImage(partImg); err != nil {
+				log.Printf("Error normalizing part %s: %v", partType, err)
+				partImg.Close()
+				continue
+			}
+
+			if err := base.Composite(partImg, vips.BlendModeOver, 0, 0); err != nil {
+				log.Printf("Error compositing part %s: %v", partType, err)
+			}
+			partImg.Close()
 		}
 	}
 
 	if size != "" {
-		return resizeImage(base, size)
+		sizeParts := strings.Split(size, "x")
+		if len(sizeParts) == 2 {
+			targetWidth, err1 := strconv.Atoi(sizeParts[0])
+			targetHeight, err2 := strconv.Atoi(sizeParts[1])
+
+			if err1 == nil && err2 == nil && (targetWidth != width || targetHeight != height) {
+				log.Printf("resize to=%v\n", size)
+				resized, err := resizeImageOptimized(base, targetWidth, targetHeight)
+				if err != nil {
+					base.Close()
+					return nil, err
+				}
+				log.Printf("resized width=%v, height=%v", resized.Width(), resized.Height())
+				return resized, nil
+			}
+		}
 	}
 
 	return base, nil
@@ -328,84 +416,42 @@ func getPartsOrder(set string) []string {
 	}
 }
 
-func loadAndResizeImage(path string, width, height int) (image.Image, error) {
-
-	resizedKey := fmt.Sprintf("%s|%dx%d", path, width, height)
-	if img, ok := imageCache.Get(resizedKey); ok {
-		return img, nil
+func loadAndResizeImage(path string, width, height int) (*vips.ImageRef, error) {
+	img, err := vips.LoadImageFromFile(path, &vips.ImportParams{})
+	if err != nil {
+		return nil, err
 	}
 
-	originalKey := fmt.Sprintf("%s|original", path)
-
-	var img image.Image
-
-	if cached, ok := imageCache.Get(originalKey); ok {
-		img = cached
-	} else {
-		var err error
-		img, err = loadImage(path)
-		if err != nil {
+	if img.Width() != width || img.Height() != height {
+		scale := float64(width) / float64(img.Width())
+		if err := img.Resize(scale, vips.KernelLanczos3); err != nil {
+			img.Close()
 			return nil, err
 		}
-		bounds := img.Bounds()
-		imgSize := bounds.Dx() * bounds.Dy() * 4
-		imageCache.Set(originalKey, img, imgSize)
 	}
 
-	bounds := img.Bounds()
-	if bounds.Dx() == width && bounds.Dy() == height {
+	return img, nil
+}
+
+func resizeImageOptimized(img *vips.ImageRef, targetWidth, targetHeight int) (*vips.ImageRef, error) {
+	currentWidth := img.Width()
+	currentHeight := img.Height()
+
+	if currentWidth == targetWidth && currentHeight == targetHeight {
 		return img, nil
 	}
 
-	resizedImg, err := resizeImage(img, fmt.Sprintf("%dx%d", width, height))
-	if err != nil {
-		return nil, err
+	scale := float64(targetWidth) / float64(currentWidth)
+
+	if err := img.Resize(scale, vips.KernelLanczos3); err != nil {
+		return nil, fmt.Errorf("failed to resize image: %v", err)
 	}
 
-	resizedSize := width * height * 4
-	imageCache.Set(resizedKey, resizedImg, resizedSize)
-
-	return resizedImg, nil
-}
-
-func resizeImage(img image.Image, size string) (image.Image, error) {
-	sizeParts := strings.Split(size, "x")
-	if len(sizeParts) != 2 {
-		return nil, fmt.Errorf("invalid size format")
-	}
-
-	width, err := strconv.Atoi(sizeParts[0])
-	if err != nil {
-		return nil, err
-	}
-
-	height, err := strconv.Atoi(sizeParts[1])
-	if err != nil {
-		return nil, err
-	}
-
-	resized := image.NewRGBA(image.Rect(0, 0, width, height))
-	draw2.ApproxBiLinear.Scale(resized, resized.Bounds(), img, img.Bounds(), draw.Over, nil)
-
-	return resized, nil
-}
-
-func loadImage(path string) (image.Image, error) {
-	file, err := assetsFS.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	img, _, err := image.Decode(file)
-	if err != nil {
-		return nil, err
-	}
-
-	if _, ok := img.(*image.RGBA); !ok {
-		rgba := image.NewRGBA(img.Bounds())
-		draw.Draw(rgba, rgba.Bounds(), img, image.Point{}, draw.Src)
-		return rgba, nil
+	newHeight := img.Height()
+	if newHeight != targetHeight {
+		if err := img.ExtractArea(0, 0, targetWidth, targetHeight); err != nil {
+			return nil, fmt.Errorf("failed to extract area: %v", err)
+		}
 	}
 
 	return img, nil

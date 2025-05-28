@@ -1,6 +1,13 @@
 FROM docker.io/golang:1.24.3-alpine AS builder
 
-RUN apk add --no-cache build-base xz git aom-dev libwebp-dev
+RUN apk add --no-cache \
+    build-base \
+    musl-dev \
+    pkgconfig \
+    vips-dev \
+    vips-tools \
+    libheif \
+    glib-dev
 
 WORKDIR /src
 
@@ -15,17 +22,29 @@ RUN set -x && \
 
 ARG BUILD_VERSION
 
-RUN CGO_ENABLED=1 GOOS=linux \
-    go build -a -ldflags="-X main.buildVersion=$BUILD_VERSION -linkmode external -extldflags '-static' -s -w" \
+ENV CGO_ENABLED=1
+ENV GOOS=linux
+ENV GOARCH=amd64
+
+RUN set -x && \
+    go build -a -ldflags="-X main.buildVersion=HEAD -s -w" \
     -o /app/robohash ./cmd/server
 
-FROM scratch
+FROM alpine:latest
+
+RUN apk add --no-cache \
+    vips \
+    vips-tools \
+    libheif
 
 WORKDIR /app
+
+COPY ./assets ./assets
 
 COPY --from=builder /src/healthcheck-app/healthcheck /bin/healthcheck
 
 COPY --from=builder /app/robohash .
+
 
 EXPOSE 8080
 

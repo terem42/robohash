@@ -1,0 +1,1724 @@
+FROM docker.io/golang:1.24.3-alpine AS builder
+
+RUN apk add --no-cache \
+    build-base \
+    musl-dev \
+    pkgconfig \
+    vips-dev \
+    vips-tools \
+    glib-dev
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN set -x && \
+    cd healthcheck-app && \
+    make
+
+ARG BUILD_VERSION
+
+ENV CGO_ENABLED=1
+ENV GOOS=linux
+ENV GOARCH=amd64
+
+RUN set -x && \
+    go build -a -ldflags="-X main.buildVersion=HEAD -s -w" \
+    -o /app/robohash ./cmd/server
+
+FROM alpine:latest
+
+RUN apk add --no-cache \
+    vips \
+    vips-tools
+
+WORKDIR /app
+
+COPY --from=builder /src/healthcheck-app/healthcheck /bin/healthcheck
+
+COPY --from=builder /app/robohash .
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/bin/healthcheck", "http://localhost:8080/health"]
+
+LABEL org.opencontainers.image.title="Robohash" \
+      org.opencontainers.image.description="Robohash generator Golang implementation" \
+      org.opencontainers.image.authors="terem42" \
+      org.opencontainers.image.url="https://github.com/terem42/robohash" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="terem42"
+
+ENTRYPOINT ["/app/robohash"]---------------------
+github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
+github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
+github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
+github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/davidbyttow/govips/v2 v2.16.0 h1:1nH/Rbx8qZP1hd+oYL9fYQjAnm1+KorX9s07ZGseQmo=
+github.com/davidbyttow/govips/v2 v2.16.0/go.mod h1:clH5/IDVmG5eVyc23qYpyi7kmOT0B/1QNTKtci4RkyM=
+github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb h1:IT4JYU7k4ikYg1SCxNI1/Tieq/NFvh6dzLdgi7eu0tM=
+github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb/go.mod h1:bH6Xx7IW64qjjJq8M2u4dxNaBiDfKK+z/3eGDpXEQhc=
+github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
+github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
+github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
+github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e/go.mod h1:zD1mROLANZcx1PVRCS0qkT7pwLkGfwJo4zjcN/Tysno=
+github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
+github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
+github.com/stretchr/testify v1.6.1 h1:hDPOHmpOpP40lSULcqw7IrRb/u7w6RpDC9399XyoNd0=
+github.com/stretchr/testify v1.6.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
+github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
+golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
+golang.org/x/crypto v0.0.0-20210921155107-089bfa567519/go.mod h1:GvvjBRRGRdwPK5ydBHafDWAxML/pGHZbMvKqRZ5+Abc=
+golang.org/x/crypto v0.13.0/go.mod h1:y6Z2r+Rw4iayiXXAIxJIDAJ1zMW4yaTpebo8fPOliYc=
+golang.org/x/crypto v0.19.0/go.mod h1:Iy9bg/ha4yyC70EfRS8jz+B6ybOBKMaSxLj6P6oBDfU=
+golang.org/x/crypto v0.23.0/go.mod h1:CKFgDieR+mRhux2Lsu27y0fO304Db0wZe70UKqHu0v8=
+golang.org/x/image v0.18.0/go.mod h1:4yyo5vMFQjVjUcVk4jEQcU9MGy/rulF5WvUILseCM2E=
+golang.org/x/image v0.27.0 h1:C8gA4oWU/tKkdCfYT6T2u4faJu3MeNS5O8UPWlPF61w=
+golang.org/x/image v0.27.0/go.mod h1:xbdrClrAUway1MUTEZDq9mz/UpRwYAkFFNUslZtcB+g=
+golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4/go.mod h1:jJ57K6gSWd91VN4djpZkiMVwK6gcyfeH4XE8wZrZaV4=
+golang.org/x/mod v0.8.0/go.mod h1:iBbtSCu2XBx23ZKBPSOrRkjjQPZFPuis4dIYUhu/chs=
+golang.org/x/mod v0.12.0/go.mod h1:iBbtSCu2XBx23ZKBPSOrRkjjQPZFPuis4dIYUhu/chs=
+golang.org/x/mod v0.15.0/go.mod h1:hTbmBsO62+eylJbnUtE2MGJUyE7QWk4xUqPFrRgJ+7c=
+golang.org/x/mod v0.17.0/go.mod h1:hTbmBsO62+eylJbnUtE2MGJUyE7QWk4xUqPFrRgJ+7c=
+golang.org/x/net v0.0.0-20190620200207-3b0461eec859/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
+golang.org/x/net v0.0.0-20210226172049-e18ecbb05110/go.mod h1:m0MpNAwzfU5UDzcl9v0D8zg8gWTRqZa9RBIspLL5mdg=
+golang.org/x/net v0.0.0-20220722155237-a158d28d115b/go.mod h1:XRhObCWvk6IyKnWLug+ECip1KBveYUHfp+8e9klMJ9c=
+golang.org/x/net v0.6.0/go.mod h1:2Tu9+aMcznHK/AK1HMvgo6xiTLG5rD5rZLDS+rp2Bjs=
+golang.org/x/net v0.10.0/go.mod h1:0qNGK6F8kojg2nk9dLZ2mShWaEBan6FAoqfSigmmuDg=
+golang.org/x/net v0.15.0/go.mod h1:idbUs1IY1+zTqbi8yxTbhexhEEk5ur9LInksu6HrEpk=
+golang.org/x/net v0.21.0/go.mod h1:bIjVDfnllIU7BJ2DNgfnXvpSvtn8VRwhlsaeUTyUS44=
+golang.org/x/net v0.25.0 h1:d/OCCoBEUq33pjydKrGQhw7IlUPI2Oylr+8qLx49kac=
+golang.org/x/net v0.25.0/go.mod h1:JkAGAh7GEvH74S6FOH42FLoXpXbE/aqXSrIQjXgsiwM=
+golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+golang.org/x/sync v0.1.0/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+golang.org/x/sync v0.3.0/go.mod h1:FU7BRWz2tNW+3quACPkgCx/L+uEAv1htQ0V83Z9Rj+Y=
+golang.org/x/sync v0.6.0/go.mod h1:Czt+wKu1gCyEFDUtn0jG5QVvpJ6rzVqr5aXyt9drQfk=
+golang.org/x/sync v0.7.0/go.mod h1:Czt+wKu1gCyEFDUtn0jG5QVvpJ6rzVqr5aXyt9drQfk=
+golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+golang.org/x/sys v0.0.0-20201119102817-f84b799fce68/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.5.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.8.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.12.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.17.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+golang.org/x/sys v0.20.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+golang.org/x/telemetry v0.0.0-20240228155512-f48c80bd79b2/go.mod h1:TeRTkGYfJXctD9OcfyVLyj2J3IxLnKwHJR8f4D8a3YE=
+golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
+golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
+golang.org/x/term v0.5.0/go.mod h1:jMB1sMXY+tzblOD4FWmEbocvup2/aLOaQEp7JmGp78k=
+golang.org/x/term v0.8.0/go.mod h1:xPskH00ivmX89bAKVGSKKtLOWNx2+17Eiy94tnKShWo=
+golang.org/x/term v0.12.0/go.mod h1:owVbMEjm3cBLCHdkQu9b1opXd4ETQWc3BhuQGKgXgvU=
+golang.org/x/term v0.17.0/go.mod h1:lLRBjIVuehSbZlaOtGMbcMncT+aqLLLmKrsjNrUguwk=
+golang.org/x/term v0.20.0/go.mod h1:8UkIAJTvZgivsXaD6/pH6U9ecQzZ45awqEOzuCvwpFY=
+golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
+golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
+golang.org/x/text v0.7.0/go.mod h1:mrYo+phRRbMaCq/xk9113O4dZlRixOauAjOtrjsXDZ8=
+golang.org/x/text v0.9.0/go.mod h1:e1OnstbJyHTd6l/uOt8jFFHp6TRDWZR/bV3emEE/zU8=
+golang.org/x/text v0.13.0/go.mod h1:TvPlkZtksWOMsz7fbANvkp4WM8x/WCo/om8BMLbz+aE=
+golang.org/x/text v0.14.0/go.mod h1:18ZOQIKpY8NJVqYksKHtTdi31H5itFRjB5/qKTNYzSU=
+golang.org/x/text v0.15.0/go.mod h1:18ZOQIKpY8NJVqYksKHtTdi31H5itFRjB5/qKTNYzSU=
+golang.org/x/text v0.16.0/go.mod h1:GhwF1Be+LQoKShO3cGOHzqOgRrGaYc9AvblQOmPVHnI=
+golang.org/x/text v0.25.0 h1:qVyWApTSYLk/drJRO5mDlNYskwQznZmkpV2c8q9zls4=
+golang.org/x/text v0.25.0/go.mod h1:WEdwpYrmk1qmdHvhkSTNPm3app7v4rsT8F2UD6+VHIA=
+golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+golang.org/x/tools v0.0.0-20191119224855-298f0cb1881e/go.mod h1:b+2E5dAYhXwXZwtnZ6UAqBI28+e2cm9otk0dWdXHAEo=
+golang.org/x/tools v0.1.12/go.mod h1:hNGJHUnrk76NpqgfD5Aqm5Crs+Hm0VOH/i9J2+nxYbc=
+golang.org/x/tools v0.6.0/go.mod h1:Xwgl3UAJ/d3gWutnCtw505GrjyAbvKui8lOU390QaIU=
+golang.org/x/tools v0.13.0/go.mod h1:HvlwmtVNQAhOuCjW7xxvovg8wbNq7LwfXh/k7wXUl58=
+golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d/go.mod h1:aiJjzUbINMkxbQROHiO6hDPo2LHcIPhhQsa9DLh0yGk=
+golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c h1:dUUwHk2QECo/6vqA44rthZ8ie2QXMNeKRTHCNY2nXvo=
+gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+---------------------
+# Robohash for Golang
+
+[![Go Report Card](https://goreportcard.com/badge/github.com/terem42/robohash)](https://goreportcard.com/report/github.com/terem42/robohash)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+A Golang implementation of Robohash, the awesome library for generating unique robot/avatar images from any text hash. This is a port of the original [Robohash](https://github.com/e1ven/Robohash) project with performance improvements and additional features, such as performance improvements, image caching and AVIF/WebP support
+
+Alllows image returned being encoded either PNG, lossless WEBP or AVIF. PNG format is used by default, AVIF or WEBP when either .avif or .webp extensions are supplied
+
+Available as a module or standalone HTTP server.
+
+**Note**: This project uses the original image assets from Robohash under their [original license](https://github.com/e1ven/Robohash/blob/master/LICENSE).
+
+## Features
+
+- 🚀 High-performance image generation (5-10x faster than original Python version)
+- 🖼️ Supports all 5 original sets: Robots, Monsters, Heads, Cats, and Human Avatars
+- 🎨 Customizable size, background, and set selection
+- ⚡ Built with Go's standard libraries (no external image processing dependencies)
+- 🐳 Docker-ready for easy deployment
+
+## Installation
+
+```bash
+go get github.com/terem42/robohash
+```
+
+Or using Docker for standalone HTTP server version:
+
+```bash
+docker pull ghcr.io/terem42/robohash
+docker run -p 8080:8080 ghcr.io/terem42/robohash
+```
+
+## Usage
+
+### Basic URL Format
+
+```
+http://yourserver.com/{TEXT}.png?{PARAMETERS}
+http://yourserver.com/{TEXT}.avif?{PARAMETERS}
+```
+
+### Examples
+
+1. **Simple robot avatar**:
+   ```
+   https://robohash.yourserver.com/alice.png
+   ```
+
+2. **Monster avatar with custom size**:
+   ```
+   https://robohash.yourserver.com/bob.png?set=set2&size=200x200
+   ```
+
+3. **Robot head with blue background**:
+   ```
+   https://robohash.yourserver.com/charlie.png?set=set3&bgset=bg1
+   ```
+
+4. **Human avatar**:
+   ```
+   https://robohash.yourserver.com/dave@email.com.png?set=set5
+   ```
+
+5. **Human avatar encoded as AVIF**:
+   ```
+   https://robohash.yourserver.com/dave@email.com.avif?set=set5
+   ```   
+6. **Human avatar encoded as WEBP**:
+   ```
+   https://robohash.yourserver.com/dave@email.com.webp?set=set5
+   ```   
+
+
+### Available Parameters
+
+| Parameter | Values | Description |
+|-----------|--------|-------------|
+| `set`     | set1, set2, set3, set4, set5 | Image set to use (default: set1) |
+| `size`    | {width}x{height} | Output dimensions (e.g., 300x300) |
+| `bgset`   | bg1, bg2 | Background set (only for sets 1-3) |
+
+## Sets Overview
+
+1. **Set1 (Robots)** - 300×300px  
+   Colorful robot avatars with multiple parts
+   ```
+   /text.png?set=set1
+   ```
+
+2. **Set2 (Monsters)** - 350×350px  
+   Scary monster illustrations
+   ```
+   /text.png?set=set2&bgset=bg1
+   ```
+
+3. **Set3 (Heads)** - 1015×1015px  
+   Detailed robot heads (white background recommended)
+   ```
+   /text.png?set=set3&size=500x500
+   ```
+
+4. **Set4 (Cats)** - 1024×1024px  
+   Adorable cat avatars
+   ```
+   /text.png?set=set4
+   ```
+
+5. **Set5 (Humans)** - 1024×1024px  
+   Diverse human avatars with clothing options
+   ```
+   /text.png?set=set5
+   ```
+
+## API Integration
+
+```go
+package main
+
+import (
+	"github.com/terem42/robohash/robohash"
+)
+
+func main() {
+	// Create a new Robohash instance
+	rh := robohash.NewRoboHash("alice", robohash.Set3)
+	
+	// Generate image
+	img, err := rh.Generate()
+	if err != nil {
+		panic(err)
+	}
+	
+   // rest of the code
+}
+```
+
+## HTTP Caching Headers
+
+The server automatically adds optimal caching headers for generated images  
+Content-Type is set, depending on returned image  
+Example for PNG images
+
+```http
+HTTP/1.1 200 OK
+Cache-Control: public, max-age=31536000
+ETag: "a1b2c3d4e5f6..."
+Last-Modified: Wed, 21 Oct 2023 07:28:00 GMT
+Content-Type: image/png
+Content-Length: 24872
+```
+
+## Decoded PNG assets cache
+
+to significantly speed up image generation, package uses internal PNG assets image memory caching, both original and resized
+
+  - Stores parsed source images in memory
+  - LRU eviction policy
+  - Key format: `path|widthxheight` (e.g. `assets/set1/blue/003#01Body/5.png|300x300`)
+
+The cache size can be configured using environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ROBOHASH_IMG_CACHE_SIZE` | 100 | Maximum image cache size in megabytes |
+
+Example:
+```bash
+# Set cache size to 100MB
+export ROBOHASH_IMG_CACHE_SIZE=100
+docker run -e ROBOHASH_IMG_CACHE_SIZE=100 -p 8080:8080 ghcr.io/terem42/robohash
+
+
+## Nginx Configuration
+
+Example production configuration with caching:
+
+```nginx
+proxy_cache_path /var/cache/nginx/robohash 
+    levels=1:2 
+    keys_zone=robohash_cache:10m
+    inactive=1y
+    max_size=1g;
+
+server {
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_cache robohash_cache;
+        proxy_cache_valid 200 1y;
+        proxy_cache_use_stale error timeout updating;
+        add_header X-Cache-Status $upstream_cache_status;
+    }
+}
+```
+
+## Deployment
+
+1. **Standalone binary with embedded resources**:
+   ```bash
+   go build -o robohash-go ./cmd/server
+   ./robohash-go
+   ```
+
+2. **Docker**:
+   ```bash
+   docker build -t ghcr.io/terem42/robohash .
+   docker run -p 8080:8080 ghcr.io/terem42/robohash
+   ```
+
+3. **Kubernetes**:
+   ```yaml
+   # Sample deployment.yaml
+   apiVersion: apps/v1
+   kind: Deployment
+   metadata:
+     name: robohash
+   spec:
+     replicas: 3
+     template:
+       spec:
+         containers:
+         - name: robohash
+           image: ghcr.io/terem42/robohash
+           ports:
+           - containerPort: 8080
+   ```
+
+## Credits
+
+This project uses the original image assets from [Robohash](https://github.com/e1ven/Robohash) by Colin Davis (e1ven), available under the MIT License.
+
+## License
+
+MIT © Andrey Prokopenko
+```
+---------------------
+#!/bin/bash
+
+if ! command -v podman &> /dev/null; then
+    echo "❌ Podman is not installed."
+    echo "Please install it with command:"
+    echo "  sudo apt-get update && sudo apt-get install podman"
+    exit 1
+else
+    echo "✅ Podman installed: $(podman --version)"
+fi
+
+workdir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+set -x
+
+cd "$workdir" || exit 1
+
+build_version=$(git describe --tags --always 2>/dev/null || echo "v0.0.1")
+
+rm -rf app-bin/*
+
+podman build --format=docker --build-arg BUILD_VERSION="$build_version" \
+  -t "ghcr.io/terem42/robohash:$build_version" .
+---------------------
+#!/bin/bash
+find . -type f \( -name "*.go" -o -name "go.*" -o -name "Dockerfile" -o -name "*.sh" -o -name "README.md" \) -print0 | xargs -0 -I{} sh -c 'cat "{}"; echo "---------------------"' > project_sources.txt
+echo "--------------------------" >> ./project_sources.txt
+tree -d ./assets >> ./project_sources.txt
+
+---------------------
+package robohash
+
+import (
+	"crypto/sha512"
+	"encoding/hex"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/davidbyttow/govips/v2/vips"
+	"github.com/facette/natsort"
+)
+
+var assetsDir = "assets"
+
+var imageCache = NewImageCache() // Cache for decoded images
+
+func init() {
+	// Настройка vips для многопоточности
+	vips.Startup(&vips.Config{
+		ConcurrencyLevel: 0, // 0 = автоматически определить количество потоков
+		MaxCacheFiles:    100,
+		MaxCacheMem:      50 * 1024 * 1024, // 50MB cache
+		MaxCacheSize:     200,
+		ReportLeaks:      false,
+		CacheTrace:       false,
+		CollectStats:     false,
+	})
+}
+
+type RoboHash struct {
+	Text  string
+	Set   string
+	Size  string
+	BGSet string
+}
+
+func NewRoboHash(text string, set string) *RoboHash {
+	return &RoboHash{
+		Text:  text,
+		Set:   set,
+		Size:  "300x300",
+		BGSet: "",
+	}
+}
+
+func (r *RoboHash) Generate() (*vips.ImageRef, error) {
+	if r.Set == "" {
+		r.Set = "set1"
+	}
+
+	sha512 := sha512.New()
+	sha512.Write([]byte(r.Text))
+	hashBytes := sha512.Sum(nil)
+	hashString := hex.EncodeToString(hashBytes)
+
+	hashParts := splitHashIntoParts(hashString, 11)
+
+	if r.Set == "any" {
+		sets, err := os.ReadDir(filepath.Join(assetsDir))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read sets directory: %v", err)
+		}
+
+		var availableSets []string
+		for _, entry := range sets {
+			if entry.IsDir() && strings.HasPrefix(entry.Name(), "set") {
+				availableSets = append(availableSets, entry.Name())
+			}
+		}
+
+		if len(availableSets) == 0 {
+			return nil, fmt.Errorf("no valid sets found")
+		}
+
+		setIndex := hexToInt(hashParts[1]) % len(availableSets)
+		r.Set = availableSets[setIndex]
+	}
+
+	parts := make(map[string]string)
+
+	switch r.Set {
+	case "set1":
+		entries, err := os.ReadDir(filepath.Join(assetsDir, r.Set))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read set1 directory: %v", err)
+		}
+
+		var colorDirs []string
+		for _, entry := range entries {
+			if entry.IsDir() {
+				colorDirs = append(colorDirs, filepath.Join(r.Set, entry.Name()))
+			}
+		}
+
+		colorIndex := hexToInt(hashParts[0]) % len(colorDirs)
+		colorPath := colorDirs[colorIndex]
+		color := filepath.Base(colorPath)
+
+		parts["mouth"] = selectPart(hashParts[4], filepath.Join(r.Set, color, "000#Mouth"))
+		parts["eyes"] = selectPart(hashParts[5], filepath.Join(r.Set, color, "001#Eyes"))
+		parts["accessory"] = selectPart(hashParts[6], filepath.Join(r.Set, color, "002#Accessory"))
+		parts["body"] = selectPart(hashParts[7], filepath.Join(r.Set, color, "003#01Body"))
+		parts["face"] = selectPart(hashParts[8], filepath.Join(r.Set, color, "004#02Face"))
+
+	case "set2":
+		parts["body"] = selectPart(hashParts[4], filepath.Join(r.Set, "000#04Body"))
+		parts["mouth"] = selectPart(hashParts[5], filepath.Join(r.Set, "001#Mouth"))
+		parts["eyes"] = selectPart(hashParts[6], filepath.Join(r.Set, "002#Eyes"))
+		parts["bodycolors"] = selectPart(hashParts[7], filepath.Join(r.Set, "003#02BodyColors"))
+		parts["facecolors"] = selectPart(hashParts[8], filepath.Join(r.Set, "004#01FaceColors"))
+		parts["nose"] = selectPart(hashParts[9], filepath.Join(r.Set, "005#Nose"))
+		parts["face"] = selectPart(hashParts[10], filepath.Join(r.Set, "006#03Faces"))
+
+	case "set3":
+		parts["mouth"] = selectPart(hashParts[4], filepath.Join(r.Set, "000#07Mouth"))
+		parts["wave"] = selectPart(hashParts[5], filepath.Join(r.Set, "001#02Wave"))
+		parts["eyebrows"] = selectPart(hashParts[6], filepath.Join(r.Set, "002#05Eyebrows"))
+		parts["eyes"] = selectPart(hashParts[7], filepath.Join(r.Set, "003#04Eyes"))
+		parts["nose"] = selectPart(hashParts[8], filepath.Join(r.Set, "004#06Nose"))
+		parts["base"] = selectPart(hashParts[9], filepath.Join(r.Set, "005#01BaseFace"))
+		parts["antenna"] = selectPart(hashParts[10], filepath.Join(r.Set, "006#03Antenna"))
+
+	case "set4":
+		parts["body"] = selectPart(hashParts[4], filepath.Join(r.Set, "000#00body"))
+		parts["fur"] = selectPart(hashParts[5], filepath.Join(r.Set, "001#01fur"))
+		parts["eyes"] = selectPart(hashParts[6], filepath.Join(r.Set, "002#02eyes"))
+		parts["mouth"] = selectPart(hashParts[7], filepath.Join(r.Set, "003#03mouth"))
+		parts["accessory"] = selectPart(hashParts[8], filepath.Join(r.Set, "004#04accessories"))
+
+	case "set5":
+		parts["body"] = selectPart(hashParts[4], filepath.Join(r.Set, "000#Body"))
+		parts["eyes"] = selectPart(hashParts[5], filepath.Join(r.Set, "001#Eye"))
+		parts["eyebrow"] = selectPart(hashParts[6], filepath.Join(r.Set, "002#Eyebrow"))
+		parts["mouth"] = selectPart(hashParts[7], filepath.Join(r.Set, "003#Mouth"))
+		parts["cloth"] = selectPart(hashParts[8], filepath.Join(r.Set, "004#Cloth"))
+		parts["facialhair"] = selectPart(hashParts[9], filepath.Join(r.Set, "005#FacialHair"))
+		parts["top"] = selectPart(hashParts[10], filepath.Join(r.Set, "006#Top"))
+		parts["accessories"] = selectPart(hashParts[11], filepath.Join(r.Set, "007#Accessories"))
+
+	default:
+		return nil, fmt.Errorf("unknown set: %s", r.Set)
+	}
+
+	bgSetHash := hashParts[3]
+	if r.BGSet == "any" {
+		bgSets, err := os.ReadDir(filepath.Join(assetsDir, "backgrounds"))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read backgrounds directory: %v", err)
+		}
+		bgSetIndex := hexToInt(bgSetHash) % len(bgSets)
+		r.BGSet = bgSets[bgSetIndex].Name()
+	}
+
+	return composeImage(parts, r.Size, r.BGSet, r.Set, hashString[0:12])
+}
+
+func selectPart(hashPart string, partPath string) string {
+	dirPath := filepath.Join(assetsDir, partPath)
+
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		log.Printf("Error reading directory %s: %v", dirPath, err)
+		return ""
+	}
+
+	var matches []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".png") {
+			fullPath := filepath.Join(dirPath, entry.Name())
+			matches = append(matches, fullPath)
+		}
+	}
+
+	natsort.Sort(matches)
+
+	if len(matches) == 0 {
+		log.Printf("No PNG files found in directory: %s", dirPath)
+		return ""
+	}
+
+	index := hexToInt(hashPart) % len(matches)
+	return matches[index]
+}
+
+func getSetDimensions(set string) (int, int) {
+	switch set {
+	case "set1":
+		return 300, 300
+	case "set2":
+		return 350, 350
+	case "set3":
+		return 1015, 1015
+	case "set4", "set5":
+		return 1024, 1024
+	default:
+		return 300, 300
+	}
+}
+
+// Оптимизированная функция нормализации - проверяет состояние перед вызовами vips
+func normalizeImage(img *vips.ImageRef) error {
+	// Проверяем цветовое пространство только если нужно
+	if img.Interpretation() != vips.InterpretationSRGB {
+		if err := img.ToColorSpace(vips.InterpretationSRGB); err != nil {
+			return fmt.Errorf("failed to convert to sRGB: %v", err)
+		}
+	}
+
+	// Проверяем количество каналов только если нужно
+	bands := img.Bands()
+	if bands == 3 {
+		if err := img.AddAlpha(); err != nil {
+			return fmt.Errorf("failed to add alpha channel: %v", err)
+		}
+	} else if bands != 4 {
+		return fmt.Errorf("unexpected number of bands: %d", bands)
+	}
+
+	return nil
+}
+
+func composeImage(parts map[string]string, size string, bgSet string, set string, bgSetHashPart string) (*vips.ImageRef, error) {
+	width, height := getSetDimensions(set)
+
+	// Создаем прозрачное изображение за один вызов
+	base, err := vips.Black(width, height)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create base image: %v", err)
+	}
+
+	// Объединяем установку цветового пространства и альфы
+	if err := base.ToColorSpace(vips.InterpretationSRGB); err != nil {
+		base.Close()
+		return nil, fmt.Errorf("failed to set color space: %v", err)
+	}
+
+	if err := base.AddAlpha(); err != nil {
+		base.Close()
+		return nil, fmt.Errorf("failed to add alpha channel: %v", err)
+	}
+
+	// Делаем изображение прозрачным одним вызовом
+	if err := base.Linear([]float64{1, 1, 1, 0}, []float64{0, 0, 0, 0}); err != nil {
+		base.Close()
+		return nil, fmt.Errorf("failed to make image transparent: %v", err)
+	}
+
+	// Добавляем фон если указан
+	if bgSet != "" {
+		bgDirPath := filepath.Join(assetsDir, "backgrounds", bgSet)
+
+		entries, err := os.ReadDir(bgDirPath)
+		if err != nil {
+			log.Printf("Error reading background directory %s: %v", bgDirPath, err)
+		} else {
+			var bgFiles []string
+			for _, entry := range entries {
+				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".png") {
+					bgFiles = append(bgFiles, filepath.Join(bgDirPath, entry.Name()))
+				}
+			}
+
+			if len(bgFiles) > 0 {
+				bgIndex := hexToInt(bgSetHashPart) % len(bgFiles)
+
+				bgImg, err := loadAndResizeImage(bgFiles[bgIndex], width, height)
+				if err != nil {
+					base.Close()
+					return nil, fmt.Errorf("error loading background: %v", err)
+				}
+
+				// Нормализуем фоновое изображение (оптимизированная функция)
+				if err := normalizeImage(bgImg); err != nil {
+					base.Close()
+					bgImg.Close()
+					return nil, fmt.Errorf("error normalizing background: %v", err)
+				}
+
+				// Композитинг фона
+				if err := base.Composite(bgImg, vips.BlendModeOver, 0, 0); err != nil {
+					base.Close()
+					bgImg.Close()
+					return nil, fmt.Errorf("error compositing background: %v", err)
+				}
+				bgImg.Close()
+			}
+		}
+	}
+
+	order := getPartsOrder(set)
+
+	for _, partType := range order {
+		if partPath, ok := parts[partType]; ok && partPath != "" {
+			partImg, err := loadAndResizeImage(partPath, width, height)
+			if err != nil {
+				log.Printf("Error loading part %s (%s): %v", partType, partPath, err)
+				continue
+			}
+
+			// Нормализуем изображение части (оптимизированная функция)
+			if err := normalizeImage(partImg); err != nil {
+				log.Printf("Error normalizing part %s: %v", partType, err)
+				partImg.Close()
+				continue
+			}
+
+			// Композитинг части
+			if err := base.Composite(partImg, vips.BlendModeOver, 0, 0); err != nil {
+				log.Printf("Error compositing part %s: %v", partType, err)
+			}
+			partImg.Close()
+		}
+	}
+
+	// Изменяем размер только если необходимо
+	if size != "" {
+		sizeParts := strings.Split(size, "x")
+		if len(sizeParts) == 2 {
+			targetWidth, err1 := strconv.Atoi(sizeParts[0])
+			targetHeight, err2 := strconv.Atoi(sizeParts[1])
+
+			if err1 == nil && err2 == nil && (targetWidth != width || targetHeight != height) {
+				resized, err := resizeImageOptimized(base, targetWidth, targetHeight)
+				if err != nil {
+					base.Close()
+					return nil, err
+				}
+				base.Close()
+				return resized, nil
+			}
+		}
+	}
+
+	return base, nil
+}
+
+func splitHashIntoParts(hash string, count int) []string {
+	partLength := len(hash) / count
+	parts := make([]string, count)
+	for i := 0; i < count; i++ {
+		start := i * partLength
+		end := (i + 1) * partLength
+		parts[i] = hash[start:end]
+	}
+	parts = append(parts, parts...)
+	return parts
+}
+
+func hexToInt(hexStr string) int {
+	num, err := strconv.ParseInt(hexStr, 16, 64)
+	if err != nil {
+		return 0
+	}
+	return int(num)
+}
+
+func getPartsOrder(set string) []string {
+	switch set {
+	case "set1":
+		return []string{
+			"body",      // 003#01Body
+			"face",      // 004#02Face
+			"eyes",      // 001#Eyes
+			"mouth",     // 000#Mouth
+			"accessory", // 002#Accessory
+		}
+
+	case "set2":
+		return []string{
+			"facecolors", // 004#01FaceColors
+			"bodycolors", // 003#02BodyColors
+			"face",       // 006#03Faces
+			"body",       // 000#04Body
+			"mouth",      // 001#Mouth
+			"eyes",       // 002#Eyes
+			"nose",       // 005#Nose
+		}
+
+	case "set3":
+		return []string{
+			"base",     // 005#01BaseFace
+			"wave",     // 001#02Wave
+			"antenna",  // 006#03Antenna
+			"eyes",     // 003#04Eyes
+			"eyebrows", // 002#05Eyebrows
+			"nose",     // 004#06Nose
+			"mouth",    // 000#07Mouth
+		}
+
+	case "set4":
+		return []string{
+			"body",      // 000#00body
+			"fur",       // 001#01fur
+			"eyes",      // 002#02eyes
+			"mouth",     // 003#03mouth
+			"accessory", // 004#04accessories
+		}
+
+	case "set5":
+		return []string{
+			"body",        // 000#Body
+			"eyes",        // 001#Eye
+			"eyebrow",     // 002#Eyebrow
+			"mouth",       // 003#Mouth
+			"cloth",       // 004#Cloth
+			"facialhair",  // 005#FacialHair
+			"top",         // 006#Top
+			"accessories", // 007#Accessories
+		}
+
+	default:
+		return []string{
+			"body",
+			"face",
+			"eyes",
+			"mouth",
+			"accessory",
+		}
+	}
+}
+
+func loadAndResizeImage(path string, width, height int) (*vips.ImageRef, error) {
+	resizedKey := fmt.Sprintf("%s|%dx%d", path, width, height)
+
+	// Check if resized version is cached
+	if data, ok := imageCache.Get(resizedKey); ok {
+		img, err := vips.NewImageFromBuffer(data)
+		if err == nil {
+			return img, nil
+		}
+		// If loading from cache failed, continue to reload
+	}
+
+	originalKey := fmt.Sprintf("%s|original", path)
+	var img *vips.ImageRef
+
+	// Check if original is cached
+	if data, ok := imageCache.Get(originalKey); ok {
+		var err error
+		img, err = vips.NewImageFromBuffer(data)
+		if err != nil {
+			// If loading from cache failed, reload from file
+			img, err = loadImage(path)
+			if err != nil {
+				return nil, err
+			}
+		}
+	} else {
+		// Load from file and cache
+		var err error
+		img, err = loadImage(path)
+		if err != nil {
+			return nil, err
+		}
+
+		// Export to PNG and cache the raw data
+		if pngData, _, err := img.ExportPng(&vips.PngExportParams{Quality: 100}); err == nil {
+			imageCache.Set(originalKey, pngData, len(pngData))
+		}
+	}
+
+	// Check if we need to resize
+	if img.Width() == width && img.Height() == height {
+		return img, nil
+	}
+
+	resizedImg, err := resizeImageOptimized(img, width, height)
+	if err != nil {
+		img.Close()
+		return nil, err
+	}
+	img.Close()
+
+	if pngData, _, err := resizedImg.ExportPng(&vips.PngExportParams{Quality: 100}); err == nil {
+		imageCache.Set(resizedKey, pngData, len(pngData))
+	}
+
+	return resizedImg, nil
+}
+
+// Оптимизированная функция изменения размера
+func resizeImageOptimized(img *vips.ImageRef, targetWidth, targetHeight int) (*vips.ImageRef, error) {
+	currentWidth := img.Width()
+	currentHeight := img.Height()
+
+	// Избегаем ненужных операций если размер уже правильный
+	if currentWidth == targetWidth && currentHeight == targetHeight {
+		return img, nil
+	}
+
+	// Вычисляем масштаб только один раз
+	scale := float64(targetWidth) / float64(currentWidth)
+
+	// Используем высококачественное изменение размера
+	if err := img.Resize(scale, vips.KernelLanczos3); err != nil {
+		return nil, fmt.Errorf("failed to resize image: %v", err)
+	}
+
+	// Обрезаем до точного размера только если нужно
+	newHeight := img.Height()
+	if newHeight != targetHeight {
+		if err := img.ExtractArea(0, 0, targetWidth, targetHeight); err != nil {
+			return nil, fmt.Errorf("failed to extract area: %v", err)
+		}
+	}
+
+	return img, nil
+}
+
+func loadImage(path string) (*vips.ImageRef, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	// Читаем файл в буфер
+	buf := make([]byte, 0)
+	chunk := make([]byte, 1024)
+	for {
+		n, err := file.Read(chunk)
+		if n > 0 {
+			buf = append(buf, chunk[:n]...)
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	// Загружаем изображение из буфера
+	img, err := vips.NewImageFromBuffer(buf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load image from buffer: %v", err)
+	}
+
+	return img, nil
+}
+---------------------
+package robohash
+
+import (
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
+	"runtime"
+	"testing"
+
+	"github.com/davidbyttow/govips/v2/vips"
+)
+
+type testCase struct {
+	name          string
+	text          string
+	set           string
+	size          string
+	bgSet         string
+	png_expected  string
+	avif_expected string
+	webp_expected string
+}
+
+func setupTests() {
+	assetsDir = "../assets"
+	// Lock OS thread as vips is not goroutine-safe during initialization
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	cfg := &vips.Config{
+		ConcurrencyLevel: 1, // Use 1 thread for tests to avoid race conditions
+		MaxCacheFiles:    0,
+		MaxCacheMem:      0,
+		MaxCacheSize:     0,
+		ReportLeaks:      true,
+		CacheTrace:       true,
+	}
+	vips.Startup(cfg)
+
+}
+
+func TestRoboHashGeneration(t *testing.T) {
+	tests := []testCase{
+		{
+			name:          "Default set1 with simple text",
+			text:          "test123",
+			set:           "set1",
+			size:          "300x300",
+			bgSet:         "",
+			png_expected:  "0d387613c5e8906ead77f9c721f72605",
+			avif_expected: "5654cc45d232fb18550f79785fd2a40b",
+			webp_expected: "c2c07051e15d01fe90a86c287503915f",
+		},
+		{
+			name:          "set2 with different text",
+			text:          "another_test",
+			set:           "set2",
+			size:          "350x350",
+			bgSet:         "",
+			png_expected:  "90bec5f6836c11aebf9655af401910d2",
+			avif_expected: "bc1b9a1066bdfe8ec2fa71b9fefa7f5e",
+			webp_expected: "2d097c23f664b8df7452f4d685368860",
+		},
+		{
+			name:          "set3 with background",
+			text:          "complex_robot",
+			set:           "set3",
+			size:          "500x500",
+			bgSet:         "bg1",
+			png_expected:  "508d1f14512da60aa3ba9bd93f3937e3",
+			avif_expected: "e1e14027059152c8af398881fc11d58b",
+			webp_expected: "9bb4a79588921bc4eb3e663d5e84b057",
+		},
+		{
+			name:          "set4 with custom size",
+			text:          "cat_avatar",
+			set:           "set4",
+			size:          "200x200",
+			bgSet:         "",
+			png_expected:  "7cbc9d0fde39a9644d3322ab93c14106",
+			avif_expected: "7975ef5c2b1162c469d22a855d9d051e",
+			webp_expected: "51ab01e37530843b1f95ab0f82fc7eac",
+		},
+		{
+			name:          "set5 human avatar",
+			text:          "human_user",
+			set:           "set5",
+			size:          "400x400",
+			bgSet:         "bg2",
+			png_expected:  "997f188de3228e39616b1d154a1f257d",
+			avif_expected: "0fbed7170d0f8cb6439e99b9224e7069",
+			webp_expected: "5a04bef70337ef4977345a1ce035fd24",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			robo := NewRoboHash(tt.text, tt.set)
+			robo.Size = tt.size
+			robo.BGSet = tt.bgSet
+
+			img, err := robo.Generate()
+			if err != nil {
+				t.Fatalf("Generate() failed: %v", err)
+			}
+			if img == nil {
+				t.Fatal("Generate() returned nil image")
+			}
+			defer img.Close() // Important: close vips image to prevent memory leaks
+
+			// Test PNG encoding
+			pngBuf, _, err := img.ExportPng(&vips.PngExportParams{
+				Quality: 100,
+			})
+			if err != nil {
+				t.Fatalf("PNG export failed: %v", err)
+			}
+			imgHash := md5Hash(pngBuf)
+			if imgHash != tt.png_expected {
+				t.Errorf("PNG hash mismatch: got %s, want %s", imgHash, tt.png_expected)
+			}
+
+			// Test AVIF encoding
+			avifBuf, _, err := img.ExportAvif(&vips.AvifExportParams{
+				Quality: 100,
+			})
+			if err != nil {
+				t.Fatalf("AVIF export failed: %v", err)
+			}
+			imgHash = md5Hash(avifBuf)
+			if imgHash != tt.avif_expected {
+				t.Errorf("AVIF hash mismatch: got %s, want %s", imgHash, tt.avif_expected)
+			}
+
+			// Test WebP encoding
+			webpBuf, _, err := img.ExportWebp(&vips.WebpExportParams{
+				Quality:  100,
+				Lossless: true,
+			})
+			if err != nil {
+				t.Fatalf("WEBP export failed: %v", err)
+			}
+			imgHash = md5Hash(webpBuf)
+			if imgHash != tt.webp_expected {
+				t.Errorf("WEBP hash mismatch: got %s, want %s", imgHash, tt.webp_expected)
+			}
+		})
+	}
+}
+
+func TestEmptyText(t *testing.T) {
+	setupTests()
+	robo := NewRoboHash("", "set1")
+	img, err := robo.Generate()
+	if err != nil {
+		t.Fatalf("Generate() with empty text failed: %v", err)
+	}
+	if img == nil {
+		t.Error("Generated image is nil for empty text")
+	} else {
+		defer img.Close()
+	}
+}
+
+func TestInvalidSet(t *testing.T) {
+	setupTests()
+	robo := NewRoboHash("test", "invalid_set")
+	img, err := robo.Generate()
+	if err == nil {
+		t.Error("Expected error for invalid set, got nil")
+		if img != nil {
+			img.Close()
+		}
+	}
+}
+
+func TestAnySet(t *testing.T) {
+	setupTests()
+	robo := NewRoboHash("test_any", "any")
+	img, err := robo.Generate()
+	if err != nil {
+		t.Fatalf("Generate() with 'any' set failed: %v", err)
+	}
+	if img == nil {
+		t.Error("Generated image is nil for 'any' set")
+	} else {
+		defer img.Close()
+
+		// Verify image has expected dimensions (should be one of the set dimensions)
+		width := img.Width()
+		height := img.Height()
+
+		validSizes := [][2]int{
+			{300, 300},   // set1
+			{350, 350},   // set2
+			{1015, 1015}, // set3
+			{1024, 1024}, // set4, set5
+		}
+
+		found := false
+		for _, size := range validSizes {
+			if width == size[0] && height == size[1] {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			t.Errorf("Unexpected image dimensions for 'any' set: %dx%d", width, height)
+		}
+	}
+}
+
+func TestBackgroundAny(t *testing.T) {
+	setupTests()
+	robo := NewRoboHash("test_bg", "set1")
+	robo.BGSet = "any"
+
+	img, err := robo.Generate()
+	if err != nil {
+		t.Fatalf("Generate() with 'any' background failed: %v", err)
+	}
+	if img == nil {
+		t.Error("Generated image is nil for 'any' background")
+	} else {
+		defer img.Close()
+	}
+}
+
+func TestDifferentSizes(t *testing.T) {
+	sizes := []string{"100x100", "200x200", "400x400", "800x800"}
+
+	for _, size := range sizes {
+		t.Run("Size_"+size, func(t *testing.T) {
+			robo := NewRoboHash("test_size", "set1")
+			robo.Size = size
+
+			img, err := robo.Generate()
+			if err != nil {
+				t.Fatalf("Generate() with size %s failed: %v", size, err)
+			}
+			if img == nil {
+				t.Error("Generated image is nil")
+				return
+			}
+			defer img.Close()
+
+			// Parse expected dimensions
+			var expectedWidth, expectedHeight int
+			if _, err := fmt.Sscanf(size, "%dx%d", &expectedWidth, &expectedHeight); err != nil {
+				t.Fatalf("Failed to parse size %s: %v", size, err)
+			}
+
+			// Check actual dimensions
+			if img.Width() != expectedWidth || img.Height() != expectedHeight {
+				t.Errorf("Size mismatch: expected %dx%d, got %dx%d",
+					expectedWidth, expectedHeight, img.Width(), img.Height())
+			}
+		})
+	}
+}
+
+func TestConsistency(t *testing.T) {
+	setupTests()
+	// Test that the same input always produces the same output
+	text := "consistency_test"
+	set := "set1"
+
+	robo1 := NewRoboHash(text, set)
+	img1, err := robo1.Generate()
+	if err != nil {
+		t.Fatalf("First generation failed: %v", err)
+	}
+	defer img1.Close()
+
+	robo2 := NewRoboHash(text, set)
+	img2, err := robo2.Generate()
+	if err != nil {
+		t.Fatalf("Second generation failed: %v", err)
+	}
+	defer img2.Close()
+
+	// Export both images as PNG and compare
+	png1, _, err := img1.ExportPng(&vips.PngExportParams{Quality: 100})
+	if err != nil {
+		t.Fatalf("Failed to export first image: %v", err)
+	}
+
+	png2, _, err := img2.ExportPng(&vips.PngExportParams{Quality: 100})
+	if err != nil {
+		t.Fatalf("Failed to export second image: %v", err)
+	}
+
+	hash1 := md5Hash(png1)
+	hash2 := md5Hash(png2)
+
+	if hash1 != hash2 {
+		t.Errorf("Images are not consistent: hash1=%s, hash2=%s", hash1, hash2)
+	}
+}
+
+func TestAllSets(t *testing.T) {
+	sets := []string{"set1", "set2", "set3", "set4", "set5"}
+
+	for _, set := range sets {
+		t.Run("Set_"+set, func(t *testing.T) {
+			robo := NewRoboHash("test_"+set, set)
+			img, err := robo.Generate()
+			if err != nil {
+				t.Fatalf("Generate() for %s failed: %v", set, err)
+			}
+			if img == nil {
+				t.Errorf("Generated image is nil for set %s", set)
+				return
+			}
+			defer img.Close()
+
+			// Verify image has expected dimensions for each set
+			expectedWidth, expectedHeight := getSetDimensions(set)
+			if img.Width() != expectedWidth || img.Height() != expectedHeight {
+				t.Errorf("Wrong dimensions for %s: expected %dx%d, got %dx%d",
+					set, expectedWidth, expectedHeight, img.Width(), img.Height())
+			}
+		})
+	}
+}
+
+// Benchmark tests
+func BenchmarkGenerate(b *testing.B) {
+	robo := NewRoboHash("benchmark_test", "set1")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		img, err := robo.Generate()
+		if err != nil {
+			b.Fatalf("Generate failed: %v", err)
+		}
+		if img != nil {
+			img.Close()
+		}
+	}
+}
+
+func BenchmarkGenerateWithResize(b *testing.B) {
+	robo := NewRoboHash("benchmark_resize", "set1")
+	robo.Size = "512x512"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		img, err := robo.Generate()
+		if err != nil {
+			b.Fatalf("Generate failed: %v", err)
+		}
+		if img != nil {
+			img.Close()
+		}
+	}
+}
+
+func BenchmarkGenerateWithBackground(b *testing.B) {
+	robo := NewRoboHash("benchmark_bg", "set1")
+	robo.BGSet = "bg1"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		img, err := robo.Generate()
+		if err != nil {
+			b.Fatalf("Generate failed: %v", err)
+		}
+		if img != nil {
+			img.Close()
+		}
+	}
+}
+
+func md5Hash(data []byte) string {
+	hasher := md5.New()
+	hasher.Write(data)
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+---------------------
+package robohash
+
+import (
+	"container/list"
+	"os"
+	"strconv"
+	"sync"
+
+	"github.com/cespare/xxhash/v2"
+)
+
+const (
+	shardSizeMB   = 10
+	minShardCount = 4
+)
+
+type cacheItem struct {
+	key  string
+	img  []byte
+	size int
+}
+
+type ShardedImageCache struct {
+	shards []*imageCacheShard
+}
+
+type imageCacheShard struct {
+	mu          sync.RWMutex
+	list        *list.List
+	items       map[string]*list.Element
+	currentSize int
+	maxSize     int
+}
+
+func NewImageCache() *ShardedImageCache {
+	maxSizeMB := getCacheSizeMB()
+	shardCount := calculateShardCount(maxSizeMB)
+
+	shards := make([]*imageCacheShard, shardCount)
+	for i := range shards {
+		shards[i] = &imageCacheShard{
+			list:    list.New(),
+			items:   make(map[string]*list.Element),
+			maxSize: (maxSizeMB * 1024 * 1024) / shardCount,
+		}
+	}
+
+	return &ShardedImageCache{
+		shards: shards,
+	}
+}
+
+func calculateShardCount(maxSizeMB int) int {
+	shardCount := maxSizeMB / shardSizeMB
+	if shardCount < minShardCount {
+		return minShardCount
+	}
+	return shardCount
+}
+
+func getCacheSizeMB() int {
+	if sizeStr := os.Getenv("ROBOHASH_IMG_CACHE_SIZE"); sizeStr != "" {
+		if size, err := strconv.Atoi(sizeStr); err == nil && size > 0 {
+			return size
+		}
+	}
+	return 100 // Default size 100MB
+}
+
+func (c *ShardedImageCache) getShard(key string) *imageCacheShard {
+	hash := xxhash.Sum64String(key)
+	return c.shards[hash%uint64(len(c.shards))]
+}
+
+func (c *ShardedImageCache) Get(key string) ([]byte, bool) {
+	shard := c.getShard(key)
+	shard.mu.RLock()
+	defer shard.mu.RUnlock()
+
+	if elem, ok := shard.items[key]; ok {
+		shard.list.MoveToFront(elem)
+		// Return a copy of the image data
+		imgCopy := make([]byte, len(elem.Value.(*cacheItem).img))
+		copy(imgCopy, elem.Value.(*cacheItem).img)
+		return imgCopy, true
+	}
+	return nil, false
+}
+
+func (c *ShardedImageCache) Set(key string, img []byte, imgSize int) {
+	shard := c.getShard(key)
+	shard.mu.Lock()
+	defer shard.mu.Unlock()
+
+	// Проверяем, есть ли уже такой ключ
+	if elem, ok := shard.items[key]; ok {
+		oldItem := elem.Value.(*cacheItem)
+		oldSize := oldItem.size
+
+		oldItem.img = img
+		oldItem.size = imgSize
+		shard.currentSize += imgSize - oldSize
+		shard.list.MoveToFront(elem)
+		return
+	}
+
+	// Освобождаем место если нужно
+	for shard.currentSize+imgSize > shard.maxSize && shard.list.Len() > 0 {
+		oldest := shard.list.Back()
+		oldestItem := oldest.Value.(*cacheItem)
+
+		shard.list.Remove(oldest)
+		delete(shard.items, oldestItem.key)
+		shard.currentSize -= oldestItem.size
+	}
+
+	// Добавляем новое изображение
+	item := &cacheItem{
+		key:  key,
+		img:  img,
+		size: imgSize,
+	}
+	elem := shard.list.PushFront(item)
+	shard.items[key] = elem
+	shard.currentSize += imgSize
+}
+
+// Cleanup закрывает все изображения в кеше и освобождает память
+func (c *ShardedImageCache) Cleanup() {
+	for _, shard := range c.shards {
+		shard.mu.Lock()
+		shard.items = make(map[string]*list.Element)
+		shard.list.Init()
+		shard.currentSize = 0
+		shard.mu.Unlock()
+	}
+}
+---------------------
+package main
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"log"
+	"net/http"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/davidbyttow/govips/v2/vips"
+	"github.com/terem42/robohash/robohash"
+)
+
+var buildVersion = "HEAD"
+
+func generateETag(data []byte) string {
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status": "ok", "version": "` + buildVersion + `", "timestamp": "` + time.Now().UTC().Format(time.RFC3339) + `"}`))
+}
+
+func hashHandler(w http.ResponseWriter, r *http.Request) {
+
+	path := strings.TrimPrefix(r.URL.Path, "/")
+	ext := filepath.Ext(path)
+	text := strings.TrimSuffix(path, filepath.Ext(path))
+
+	if strings.HasPrefix(path, "favicon") {
+		http.NotFound(w, r)
+		return
+	}
+
+	if text == "" {
+		text = "example"
+	}
+
+	query := r.URL.Query()
+	roboHash := robohash.RoboHash{
+		Text:  text,
+		Set:   query.Get("set"),
+		Size:  query.Get("size"),
+		BGSet: query.Get("bgset"),
+	}
+
+	img, err := roboHash.Generate()
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error generating image: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer img.Close()
+
+	var imgBuf []byte
+	var contentType string
+
+	switch strings.ToLower(ext) {
+	case ".avif":
+		// Экспорт в AVIF
+		imgBuf, _, err = img.ExportAvif(&vips.AvifExportParams{
+			Quality:  85,    // Качество сжатия
+			Speed:    8,     // Скорость кодирования (0-8, больше = быстрее но хуже качество)
+			Lossless: false, // Сжатие с потерями
+		})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error encoding AVIF image: %v", err), http.StatusInternalServerError)
+			return
+		}
+		contentType = "image/avif"
+
+	case ".webp":
+		// Экспорт в WebP
+		imgBuf, _, err = img.ExportWebp(&vips.WebpExportParams{
+			Quality:         85,   // Качество для lossy
+			Lossless:        true, // Используем lossless для лучшего качества
+			NearLossless:    false,
+			ReductionEffort: 4, // Уровень оптимизации (0-6)
+		})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error encoding WEBP image: %v", err), http.StatusInternalServerError)
+			return
+		}
+		contentType = "image/webp"
+
+	case ".jpg", ".jpeg":
+		// Экспорт в JPEG
+		imgBuf, _, err = img.ExportJpeg(&vips.JpegExportParams{
+			Quality:        85,
+			Interlace:      false,
+			OptimizeCoding: true,
+			SubsampleMode:  vips.VipsForeignSubsampleAuto,
+		})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error encoding JPEG image: %v", err), http.StatusInternalServerError)
+			return
+		}
+		contentType = "image/jpeg"
+
+	default:
+		// Экспорт в PNG (по умолчанию)
+		imgBuf, _, err = img.ExportPng(&vips.PngExportParams{
+			Compression: 6,     // Уровень сжатия PNG (0-9)
+			Interlace:   false, // Прогрессивная загрузка
+			Quality:     85,    // Качество (для палитровых изображений)
+		})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error encoding PNG image: %v", err), http.StatusInternalServerError)
+			return
+		}
+		contentType = "image/png"
+	}
+
+	// Устанавливаем заголовки ответа
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "public, max-age=31536000")
+	w.Header().Set("Content-Length", strconv.Itoa(len(imgBuf)))
+	w.Header().Set("ETag", `"`+generateETag(imgBuf)+`"`)
+	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+	w.Write(imgBuf)
+
+}
+
+func main() {
+	log.Printf("Robohash Go version %s", buildVersion)
+	http.HandleFunc("/health", healthHandler)
+	http.HandleFunc("/", hashHandler)
+	fmt.Println("Server running on :8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+---------------------
+module github.com/terem42/robohash
+
+go 1.23.4
+
+require (
+	github.com/cespare/xxhash/v2 v2.3.0
+	github.com/davidbyttow/govips/v2 v2.16.0
+	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
+)
+
+require (
+	golang.org/x/image v0.27.0 // indirect
+	golang.org/x/net v0.25.0 // indirect
+	golang.org/x/text v0.25.0 // indirect
+)
+---------------------
+--------------------------
+./assets
+├── backgrounds
+│   ├── bg1
+│   └── bg2
+├── set1
+│   ├── blue
+│   │   ├── 000#Mouth
+│   │   ├── 001#Eyes
+│   │   ├── 002#Accessory
+│   │   ├── 003#01Body
+│   │   └── 004#02Face
+│   ├── brown
+│   │   ├── 000#Mouth
+│   │   ├── 001#Eyes
+│   │   ├── 002#Accessory
+│   │   ├── 003#01Body
+│   │   └── 004#02Face
+│   ├── green
+│   │   ├── 000#Mouth
+│   │   ├── 001#Eyes
+│   │   ├── 002#Accessory
+│   │   ├── 003#01Body
+│   │   └── 004#02Face
+│   ├── grey
+│   │   ├── 000#Mouth
+│   │   ├── 001#Eyes
+│   │   ├── 002#Accessory
+│   │   ├── 003#01Body
+│   │   └── 004#02Face
+│   ├── orange
+│   │   ├── 000#Mouth
+│   │   ├── 001#Eyes
+│   │   ├── 002#Accessory
+│   │   ├── 003#01Body
+│   │   └── 004#02Face
+│   ├── pink
+│   │   ├── 000#Mouth
+│   │   ├── 001#Eyes
+│   │   ├── 002#Accessory
+│   │   ├── 003#01Body
+│   │   └── 004#02Face
+│   ├── purple
+│   │   ├── 000#Mouth
+│   │   ├── 001#Eyes
+│   │   ├── 002#Accessory
+│   │   ├── 003#01Body
+│   │   └── 004#02Face
+│   ├── red
+│   │   ├── 000#Mouth
+│   │   ├── 001#Eyes
+│   │   ├── 002#Accessory
+│   │   ├── 003#01Body
+│   │   └── 004#02Face
+│   ├── white
+│   │   ├── 000#Mouth
+│   │   ├── 001#Eyes
+│   │   ├── 002#Accessory
+│   │   ├── 003#01Body
+│   │   └── 004#02Face
+│   └── yellow
+│       ├── 000#Mouth
+│       ├── 001#Eyes
+│       ├── 002#Accessory
+│       ├── 003#01Body
+│       └── 004#02Face
+├── set2
+│   ├── 000#04Body
+│   ├── 001#Mouth
+│   ├── 002#Eyes
+│   ├── 003#02BodyColors
+│   ├── 004#01FaceColors
+│   ├── 005#Nose
+│   └── 006#03Faces
+├── set3
+│   ├── 000#07Mouth
+│   ├── 001#02Wave
+│   ├── 002#05Eyebrows
+│   ├── 003#04Eyes
+│   ├── 004#06Nose
+│   ├── 005#01BaseFace
+│   └── 006#03Antenna
+├── set4
+│   ├── 000#00body
+│   ├── 001#01fur
+│   ├── 002#02eyes
+│   ├── 003#03mouth
+│   └── 004#04accessories
+└── set5
+    ├── 000#Body
+    ├── 001#Eye
+    ├── 002#Eyebrow
+    ├── 003#Mouth
+    ├── 004#Cloth
+    ├── 005#FacialHair
+    ├── 006#Top
+    └── 007#Accessories
+
+96 directories
