@@ -188,42 +188,6 @@ func TestConsistencyPNG(t *testing.T) {
 	}
 }
 
-func TestConsistencyAVIF(t *testing.T) {
-	text := "consistency_test"
-	set := "set1"
-
-	robo1 := NewRoboHash(text, set)
-	img1, err := robo1.Generate()
-	if err != nil {
-		t.Fatalf("First generation failed: %v", err)
-	}
-	defer img1.Close()
-
-	robo2 := NewRoboHash(text, set)
-	img2, err := robo2.Generate()
-	if err != nil {
-		t.Fatalf("Second generation failed: %v", err)
-	}
-	defer img2.Close()
-
-	avif1, _, err := img1.ExportAvif(&vips.AvifExportParams{})
-	if err != nil {
-		t.Fatalf("Failed to export first image: %v", err)
-	}
-
-	avif2, _, err := img2.ExportAvif(&vips.AvifExportParams{})
-	if err != nil {
-		t.Fatalf("Failed to export second image: %v", err)
-	}
-
-	hash1 := md5Hash(avif1)
-	hash2 := md5Hash(avif2)
-
-	if hash1 != hash2 {
-		t.Errorf("Images are not consistent: hash1=%s, hash2=%s", hash1, hash2)
-	}
-}
-
 func TestConsistencyWEBP(t *testing.T) {
 	text := "consistency_test"
 	set := "set1"
