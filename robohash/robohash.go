@@ -17,11 +17,17 @@ import (
 var assetsDir = "assets"
 
 func init() {
+	cacheSize := 100
+	if sizeStr := os.Getenv("ROBOHASH_IMG_CACHE_SIZE"); sizeStr != "" {
+		if size, err := strconv.Atoi(sizeStr); err == nil && size > 0 {
+			cacheSize = size
+		}
+	}
 	vips.Startup(&vips.Config{
 		ConcurrencyLevel: 0,
 		MaxCacheFiles:    300,
 		MaxCacheMem:      50 * 1024 * 1024, // 50MB initial cache
-		MaxCacheSize:     100,
+		MaxCacheSize:     cacheSize,
 		ReportLeaks:      false,
 		CacheTrace:       false,
 		CollectStats:     false,

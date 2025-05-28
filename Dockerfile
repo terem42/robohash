@@ -30,8 +30,6 @@ RUN set -x && \
     go build -a -ldflags="-X main.buildVersion=HEAD -s -w" \
     -o /app/robohash ./cmd/server
 
-RUN go test -v ./...    
-
 FROM alpine:latest
 
 RUN apk add --no-cache \

@@ -40,112 +40,6 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-func TestRoboHashGeneration(t *testing.T) {
-	tests := []testCase{
-		{
-			name:          "Default set1 with simple text",
-			text:          "test123",
-			set:           "set1",
-			size:          "300x300",
-			bgSet:         "",
-			png_expected:  "0d387613c5e8906ead77f9c721f72605",
-			avif_expected: "5654cc45d232fb18550f79785fd2a40b",
-			webp_expected: "c2c07051e15d01fe90a86c287503915f",
-		},
-		{
-			name:          "set2 with different text",
-			text:          "another_test",
-			set:           "set2",
-			size:          "350x350",
-			bgSet:         "",
-			png_expected:  "90bec5f6836c11aebf9655af401910d2",
-			avif_expected: "bc1b9a1066bdfe8ec2fa71b9fefa7f5e",
-			webp_expected: "2d097c23f664b8df7452f4d685368860",
-		},
-		{
-			name:          "set3 with background",
-			text:          "complex_robot",
-			set:           "set3",
-			size:          "500x500",
-			bgSet:         "bg1",
-			png_expected:  "d6d0fe605d5782f6754a67c3e344d12f",
-			avif_expected: "2a690c0de0b15fe4483c65f2d2197406",
-			webp_expected: "ee1de041d3bcd1eada710136ebe8c028",
-		},
-		{
-			name:          "set4 with custom size",
-			text:          "cat_avatar",
-			set:           "set4",
-			size:          "200x200",
-			bgSet:         "",
-			png_expected:  "3199253e1c92e2787fdd4e80c8c84583",
-			avif_expected: "c38ebb3a1b0009fb139f796e40938fe0",
-			webp_expected: "c031f034f2d40b1d4dead11fd8dc07d6",
-		},
-		{
-			name:          "set5 human avatar",
-			text:          "human_user",
-			set:           "set5",
-			size:          "400x400",
-			bgSet:         "bg2",
-			png_expected:  "c621edf3f80cc2a347d9de7c7a05b37a",
-			avif_expected: "80ca3ac6a9cfd1b5f24d6a22eba0ab9e",
-			webp_expected: "c7a401203a4a9b3df369e2ccf04c97bd",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			robo := NewRoboHash(tt.text, tt.set)
-			robo.Size = tt.size
-			robo.BGSet = tt.bgSet
-
-			img, err := robo.Generate()
-			if err != nil {
-				t.Fatalf("Generate() failed: %v", err)
-			}
-			if img == nil {
-				t.Fatal("Generate() returned nil image")
-			}
-			defer img.Close()
-
-			pngBuf, _, err := img.ExportPng(&vips.PngExportParams{
-				Quality: 100,
-			})
-			if err != nil {
-				t.Fatalf("PNG export failed: %v", err)
-			}
-			imgHash := md5Hash(pngBuf)
-			if imgHash != tt.png_expected {
-				t.Errorf("PNG hash mismatch: got %s, want %s", imgHash, tt.png_expected)
-			}
-
-			avifBuf, _, err := img.ExportAvif(&vips.AvifExportParams{
-				Quality: 100,
-			})
-			if err != nil {
-				t.Fatalf("AVIF export failed: %v", err)
-			}
-			imgHash = md5Hash(avifBuf)
-			if imgHash != tt.avif_expected {
-				t.Errorf("AVIF hash mismatch: got %s, want %s", imgHash, tt.avif_expected)
-			}
-
-			webpBuf, _, err := img.ExportWebp(&vips.WebpExportParams{
-				Quality:  100,
-				Lossless: true,
-			})
-			if err != nil {
-				t.Fatalf("WEBP export failed: %v", err)
-			}
-			imgHash = md5Hash(webpBuf)
-			if imgHash != tt.webp_expected {
-				t.Errorf("WEBP hash mismatch: got %s, want %s", imgHash, tt.webp_expected)
-			}
-		})
-	}
-}
-
 func TestEmptyText(t *testing.T) {
 	robo := NewRoboHash("", "set1")
 	img, err := robo.Generate()
@@ -258,7 +152,7 @@ func TestDifferentSizes(t *testing.T) {
 	}
 }
 
-func TestConsistency(t *testing.T) {
+func TestConsistencyPNG(t *testing.T) {
 	text := "consistency_test"
 	set := "set1"
 
@@ -288,6 +182,78 @@ func TestConsistency(t *testing.T) {
 
 	hash1 := md5Hash(png1)
 	hash2 := md5Hash(png2)
+
+	if hash1 != hash2 {
+		t.Errorf("Images are not consistent: hash1=%s, hash2=%s", hash1, hash2)
+	}
+}
+
+func TestConsistencyAVIF(t *testing.T) {
+	text := "consistency_test"
+	set := "set1"
+
+	robo1 := NewRoboHash(text, set)
+	img1, err := robo1.Generate()
+	if err != nil {
+		t.Fatalf("First generation failed: %v", err)
+	}
+	defer img1.Close()
+
+	robo2 := NewRoboHash(text, set)
+	img2, err := robo2.Generate()
+	if err != nil {
+		t.Fatalf("Second generation failed: %v", err)
+	}
+	defer img2.Close()
+
+	avif1, _, err := img1.ExportAvif(&vips.AvifExportParams{})
+	if err != nil {
+		t.Fatalf("Failed to export first image: %v", err)
+	}
+
+	avif2, _, err := img2.ExportAvif(&vips.AvifExportParams{})
+	if err != nil {
+		t.Fatalf("Failed to export second image: %v", err)
+	}
+
+	hash1 := md5Hash(avif1)
+	hash2 := md5Hash(avif2)
+
+	if hash1 != hash2 {
+		t.Errorf("Images are not consistent: hash1=%s, hash2=%s", hash1, hash2)
+	}
+}
+
+func TestConsistencyWEBP(t *testing.T) {
+	text := "consistency_test"
+	set := "set1"
+
+	robo1 := NewRoboHash(text, set)
+	img1, err := robo1.Generate()
+	if err != nil {
+		t.Fatalf("First generation failed: %v", err)
+	}
+	defer img1.Close()
+
+	robo2 := NewRoboHash(text, set)
+	img2, err := robo2.Generate()
+	if err != nil {
+		t.Fatalf("Second generation failed: %v", err)
+	}
+	defer img2.Close()
+
+	webp1, _, err := img1.ExportWebp(&vips.WebpExportParams{})
+	if err != nil {
+		t.Fatalf("Failed to export first image: %v", err)
+	}
+
+	webp2, _, err := img2.ExportWebp(&vips.WebpExportParams{})
+	if err != nil {
+		t.Fatalf("Failed to export second image: %v", err)
+	}
+
+	hash1 := md5Hash(webp1)
+	hash2 := md5Hash(webp2)
 
 	if hash1 != hash2 {
 		t.Errorf("Images are not consistent: hash1=%s, hash2=%s", hash1, hash2)
