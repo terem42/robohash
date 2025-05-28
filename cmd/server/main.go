@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"image/png"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -13,8 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Kagami/go-avif"
-	"github.com/chai2010/webp"
+	"github.com/davidbyttow/govips/v2/vips"
 	"github.com/terem42/robohash/robohash"
 )
 
@@ -59,34 +56,74 @@ func hashHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Error generating image: %v", err), http.StatusInternalServerError)
 		return
 	}
+	defer img.Close()
 
-	imgBuf := new(bytes.Buffer)
+	var imgBuf []byte
+	var contentType string
 
 	switch strings.ToLower(ext) {
 	case ".avif":
-		if err := avif.Encode(imgBuf, img, nil); err != nil {
+		// Экспорт в AVIF
+		imgBuf, _, err = img.ExportAvif(&vips.AvifExportParams{
+			Quality:  85,    // Качество сжатия
+			Speed:    8,     // Скорость кодирования (0-8, больше = быстрее но хуже качество)
+			Lossless: false, // Сжатие с потерями
+		})
+		if err != nil {
 			http.Error(w, fmt.Sprintf("Error encoding AVIF image: %v", err), http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Content-Type", "image/avif")
+		contentType = "image/avif"
+
 	case ".webp":
-		if err := webp.Encode(imgBuf, img, &webp.Options{Lossless: true}); err != nil {
+		// Экспорт в WebP
+		imgBuf, _, err = img.ExportWebp(&vips.WebpExportParams{
+			Quality:         85,   // Качество для lossy
+			Lossless:        true, // Используем lossless для лучшего качества
+			NearLossless:    false,
+			ReductionEffort: 4, // Уровень оптимизации (0-6)
+		})
+		if err != nil {
 			http.Error(w, fmt.Sprintf("Error encoding WEBP image: %v", err), http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Content-Type", "image/webp")
+		contentType = "image/webp"
+
+	case ".jpg", ".jpeg":
+		// Экспорт в JPEG
+		imgBuf, _, err = img.ExportJpeg(&vips.JpegExportParams{
+			Quality:        85,
+			Interlace:      false,
+			OptimizeCoding: true,
+			SubsampleMode:  vips.VipsForeignSubsampleAuto,
+		})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error encoding JPEG image: %v", err), http.StatusInternalServerError)
+			return
+		}
+		contentType = "image/jpeg"
+
 	default:
-		if err := png.Encode(imgBuf, img); err != nil {
+		// Экспорт в PNG (по умолчанию)
+		imgBuf, _, err = img.ExportPng(&vips.PngExportParams{
+			Compression: 6,     // Уровень сжатия PNG (0-9)
+			Interlace:   false, // Прогрессивная загрузка
+			Quality:     85,    // Качество (для палитровых изображений)
+		})
+		if err != nil {
 			http.Error(w, fmt.Sprintf("Error encoding PNG image: %v", err), http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Content-Type", "image/png")
+		contentType = "image/png"
 	}
+
+	// Устанавливаем заголовки ответа
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", "public, max-age=31536000")
-	w.Header().Set("Content-Length", strconv.Itoa(len(imgBuf.Bytes())))
-	w.Header().Set("ETag", `"`+generateETag(imgBuf.Bytes())+`"`)
+	w.Header().Set("Content-Length", strconv.Itoa(len(imgBuf)))
+	w.Header().Set("ETag", `"`+generateETag(imgBuf)+`"`)
 	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
-	w.Write(imgBuf.Bytes())
+	w.Write(imgBuf)
 
 }
 
