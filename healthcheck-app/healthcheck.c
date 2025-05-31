@@ -8,13 +8,18 @@
 #include <netdb.h>
 #include <stdbool.h>
 #include <ctype.h>
+#include <sys/time.h>
+#include <errno.h>
 
 #define BUFFER_SIZE 4096
+#define CONNECT_TIMEOUT_SEC 5
+#define RECV_TIMEOUT_SEC 5
 
 typedef struct {
     char host[256];
     int port;
     char endpoint[256];
+    long response_time_ms;
 } UrlParts;
 
 bool parse_url(const char *url, UrlParts *parts) {
@@ -108,8 +113,36 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
+    // Set connect timeout
+    struct timeval timeout;
+    timeout.tv_sec = CONNECT_TIMEOUT_SEC;
+    timeout.tv_usec = 0;
+    if (setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) < 0) {
+        perror("Error: Failed to set connect timeout");
+        close(sock);
+        freeaddrinfo(result);
+        return 1;
+    }
+
+    // Start response time measurement
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
+
     if (connect(sock, result->ai_addr, result->ai_addrlen) < 0) {
-        perror("Error: Connection failed");
+        if (errno == EINPROGRESS || errno == EWOULDBLOCK) {
+            fprintf(stderr, "Error: Connection timed out after %d seconds\n", CONNECT_TIMEOUT_SEC);
+        } else {
+            perror("Error: Connection failed");
+        }
+        close(sock);
+        freeaddrinfo(result);
+        return 1;
+    }
+
+    // Set receive timeout
+    timeout.tv_sec = RECV_TIMEOUT_SEC;
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        perror("Error: Failed to set receive timeout");
         close(sock);
         freeaddrinfo(result);
         return 1;
@@ -117,7 +150,11 @@ int main(int argc, char *argv[]) {
 
     freeaddrinfo(result);
 
-    const char *request_template = "GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n";
+    const char *request_template = "GET %s HTTP/1.1\r\n"
+                                 "Host: %s\r\n"
+                                 "User-Agent: healthcheck-app/1.0\r\n"
+                                 "Accept: */*\r\n"
+                                 "Connection: close\r\n\r\n";
     char full_request[1024];
     snprintf(full_request, sizeof(full_request), request_template, url_parts.endpoint, url_parts.host);
 
@@ -141,15 +178,30 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    gettimeofday(&end, NULL);
+    url_parts.response_time_ms = (end.tv_sec - start.tv_sec) * 1000 + 
+                               (end.tv_usec - start.tv_usec) / 1000;
+
     response[total_bytes] = '\0';
-    printf("Server response:\n%s\n", response);
     
-    if (!strstr(response, "200 OK")) {
-        fprintf(stderr, "Error: HTTP status is not 200 OK\n");
+    // Check for minimal valid HTTP response
+    char *status_line = strstr(response, "HTTP/");
+    if (!status_line) {
+        fprintf(stderr, "Error: Invalid HTTP response\n");
+        close(sock);
+        return 1;
+    }
+
+    printf("Response time: %ld ms\n", url_parts.response_time_ms);
+    printf("HTTP status: %.15s\n", status_line);
+    
+    if (!strstr(status_line, "200")) {
+        fprintf(stderr, "Error: HTTP status is not 200\n");
         close(sock);
         return 1;
     }
 
     close(sock);
+    printf("Health check passed\n");
     return 0;
 }
